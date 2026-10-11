@@ -18,6 +18,7 @@ use fp_backends::{
 const BACKEND_ID: &str = "aaudio";
 
 /// Message reported on hosts where AAudio does not exist.
+#[cfg(not(target_os = "android"))]
 const HOST_UNAVAILABLE: &str = "AAudio is Android-only";
 
 /// AAudio output behind the desktop `AudioBackend` trait.
