@@ -1,0 +1,7 @@
+<resources>
+    <!-- Nocturne baseline: Compose's FausteTheme supplies the real palette;
+         the window background only covers the launch flash. -->
+    <style name="Theme.Fauste" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#0D0D0D</item>
+    </style>
+</resources>

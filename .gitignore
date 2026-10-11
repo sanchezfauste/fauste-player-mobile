@@ -4,4 +4,9 @@ build/
 local.properties
 .idea/
 *.iml
+.kotlin/
 .superpowers/
+
+# Native libraries staged by the composeApp `buildRust` task from the Rust
+# workspace; they are build outputs, rebuilt via cargo-ndk on every preBuild.
+composeApp/src/main/jniLibs/
