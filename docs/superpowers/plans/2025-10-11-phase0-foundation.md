@@ -269,7 +269,7 @@ Add to `Cargo.toml`:
 
 ```toml
 [target.'cfg(target_os = "android")'.dependencies]
-aaudio-sys = "0.2"
+aaudio-sys = "0.1"
 ```
 
 `src/aaudio_backend.rs`: `pub struct AaudioBackend;` with `pub fn new() -> Self { Self }`. The `AudioBackend` impl is split by `cfg`: the non-Android arms return `Unavailable`/`None`/`Err(BackendError::Unavailable("AAudio is Android-only"))` (three small `#[cfg(not(target_os = "android"))]` methods), and the Android arms call `unsafe` AAudio functions wrapped in small safe helpers, each with a `// SAFETY:` comment. A `forbid` lint cannot be relaxed locally, so this step also replaces the crate's `[lints] workspace = true` (set in Task 2) with its own table — the same denies as the workspace but `unsafe_code = "deny"`, plus `clippy::indexing_slicing = "deny"` from the Global Constraints:
@@ -667,4 +667,4 @@ Push the branch, `gh pr create` with a Conventional Commit title (`feat(mobile):
 
 - The desktop repo's `opus-decoder` `[patch.crates-io]` entry applies to the desktop workspace, not this one. If `cargo deny check` flags `opus-decoder` licences or advisories here, mirror the patch by adding the same `[patch.crates-io]` pointing at `../fauste-player/vendor/opus-decoder` — that references the vendor directory without modifying it.
 - Android instrumented tests (emulator) are deliberately **not** in Phase 0 CI; they arrive with Phase 1, when there is audio to exercise. Host-lane `cargo test` covers the host branches in the meantime.
-- If `aaudio-sys 0.2` does not compile against NDK r27 headers, check the crate's documented NDK floor first and prefer bumping the crate over vendoring bindings.
+- If `aaudio-sys 0.1` does not compile against NDK r27 headers, check the crate's documented NDK floor first and prefer bumping the crate over vendoring bindings.
