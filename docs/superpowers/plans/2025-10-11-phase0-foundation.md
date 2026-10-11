@@ -191,7 +191,7 @@ Expected: FAIL — `stream_config` module does not exist.
 
 - [ ] **Step 3: Implement the conversion module**
 
-`crates-mobile/fp-backends-mobile/src/stream_config.rs`: define the four format constants as `pub const i32`, then `aaudio_format` as a four-arm `match` over `SampleFormat` (I24 → the I32 code, with a comment that AAudio has no 24-bit packed code), and `classify_aaudio_error` matching `-892` → `DeviceLost` and everything else → `Other` (the XRUN case is reported from the state callback, not from a result code, and gets its arm in Task 3). Add `pub mod stream_config;` to `lib.rs`.
+`crates-mobile/fp-backends-mobile/src/stream_config.rs`: define the four format constants as `pub const i32`, then `aaudio_format` as a four-arm `match` over `SampleFormat` (I24 → the I32 code, with a comment that AAudio has no 24-bit packed code), and `classify_aaudio_error` matching `-892` → `DeviceLost` and everything else → `Other` (the XRUN case is reported from the state callback of the real stream, not from a result code, and gets its arm in the next plan). Add `pub mod stream_config;` to `lib.rs`.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
