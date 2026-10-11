@@ -1,0 +1,34 @@
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = [
+  # `paste` is unmaintained but finished: a build-time proc-macro pulled in by
+  # lofty, with no runtime code in the binary. Revisit when lofty drops it.
+  { id = "RUSTSEC-2024-0436", reason = "build-time only proc-macro via lofty" },
+  # `ttf-parser` is unmaintained, an informational notice (no vulnerability).
+  # It parses the font of the Wayland title bar, through winit's sctk-adwaita
+  # (ab_glyph), on Linux only. Revisit when sctk-adwaita moves to another parser.
+  { id = "RUSTSEC-2026-0192", reason = "unmaintained notice; title-bar font via winit's sctk-adwaita" },
+]
+
+[licenses]
+version = 2
+allow = [
+  "MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause",
+  "ISC", "Zlib", "MPL-2.0", "Unicode-3.0", "Unicode-DFS-2016", "OFL-1.1",
+  "BSD-1-Clause", "BSL-1.0", "Ubuntu-font-1.0",
+]
+confidence-threshold = 0.9
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

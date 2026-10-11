@@ -1,0 +1,32 @@
+[workspace]
+resolver = "3"
+members = ["crates-mobile/*"]
+exclude = ["vendor"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+publish = false
+
+[workspace.dependencies]
+fp-model = { path = "../fauste-player/crates/fp-model" }
+fp-backends = { path = "../fauste-player/crates/fp-backends" }
+fp-decode = { path = "../fauste-player/crates/fp-decode" }
+fp-engine = { path = "../fauste-player/crates/fp-engine" }
+fp-store = { path = "../fauste-player/crates/fp-store" }
+fp-analysis = { path = "../fauste-player/crates/fp-analysis" }
+fp-control = { path = "../fauste-player/crates/fp-control" }
+fp-remote = { path = "../fauste-player/crates/fp-remote" }
+thiserror = "2.0.21"
+tracing = "0.1.44"
+crossbeam-channel = "0.5.17"
+rtrb = "0.4.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
