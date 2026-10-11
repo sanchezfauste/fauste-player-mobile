@@ -11,5 +11,19 @@ fp-backends.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
-[lints]
-workspace = true
+[target.'cfg(target_os = "android")'.dependencies]
+aaudio-sys = "0.1"
+
+# Own lints table instead of `[lints] workspace = true`: the workspace forbids
+# unsafe_code, which cannot be relaxed locally. This crate needs one sanctioned
+# FFI boundary (src/aaudio_backend.rs on Android), so it carries deny-level
+# copies of the workspace lints (plus clippy::indexing_slicing) and allows
+# unsafe code in that one module on Android only.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"

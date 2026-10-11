@@ -3,6 +3,15 @@
 version = 4
 
 [[package]]
+name = "aaudio-sys"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c073abf866886bf14e3b76d736af5e96498c39ba2f9af21b68908e30463a4596"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "alsa"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -219,6 +228,7 @@ dependencies = [
 name = "fp-backends-mobile"
 version = "0.1.0"
 dependencies = [
+ "aaudio-sys",
  "fp-backends",
  "thiserror 2.0.21",
  "tracing",
