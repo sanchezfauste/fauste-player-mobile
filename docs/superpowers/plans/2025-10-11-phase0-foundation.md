@@ -152,34 +152,38 @@ git commit -m "build(mobile): workspace reusing the desktop crates by path"
 ```rust
 use fp_backends::{SampleFormat, StreamErrorKind};
 
-/// AAudio format codes from the NDK headers, asserted once so the
-/// conversion table cannot drift from the platform values.
+/// AAudio format codes from the NDK headers (r27 `AAudio.h`), asserted once
+/// so the conversion table cannot drift from the platform values.
 #[test]
 fn aaudio_format_codes_match_the_ndk_headers() {
-    // AAUDIO_FORMAT_PCM_FLOAT = 5, I32 = 4, I24 = 3(?), I16 = 2 in the NDK.
+    // AAUDIO_FORMAT_UNSPECIFIED = 0, I16 = 1, FLOAT = 2, I24_PACKED = 3,
+    // I32 = 4, IEC61937 = 5 in the NDK.
     // The test pins the mapping the backend relies on.
-    assert_eq!(fp_backends_mobile::stream_config::AAUDIO_FORMAT_PCM_FLOAT, 5);
+    assert_eq!(fp_backends_mobile::stream_config::AAUDIO_FORMAT_PCM_FLOAT, 2);
     assert_eq!(fp_backends_mobile::stream_config::AAUDIO_FORMAT_PCM_I32, 4);
-    assert_eq!(fp_backends_mobile::stream_config::AAUDIO_FORMAT_PCM_I16, 2);
+    assert_eq!(fp_backends_mobile::stream_config::AAUDIO_FORMAT_PCM_I16, 1);
 }
 
 #[test]
 fn desktop_formats_map_to_their_aaudio_equivalents() {
     use fp_backends_mobile::stream_config::aaudio_format;
-    assert_eq!(aaudio_format(SampleFormat::F32), 5);
+    assert_eq!(aaudio_format(SampleFormat::F32), 2);
     assert_eq!(aaudio_format(SampleFormat::I32), 4);
-    assert_eq!(aaudio_format(SampleFormat::I16), 2);
-    // I24 has no direct AAudio code: the backend converts to I32.
+    assert_eq!(aaudio_format(SampleFormat::I16), 1);
+    // I24 maps to I32: AAUDIO_FORMAT_PCM_I24_PACKED (3) exists but requires
+    // API 31 and minSdk is 26, so the backend converts to I32.
     assert_eq!(aaudio_format(SampleFormat::I24), 4);
 }
 
 #[test]
 fn aaudio_error_codes_classify_into_desktop_kinds() {
     use fp_backends_mobile::stream_config::classify_aaudio_error;
-    // AAUDIO_ERROR_DISCONNECTED = -892, XRUN would be handled via
-    // AAUDIO_STREAM_STATE_OVERFLOW in the state machine; ERROR_TIMEOUT = -894.
-    assert_eq!(classify_aaudio_error(-892), StreamErrorKind::DeviceLost);
-    assert_eq!(classify_aaudio_error(-894), StreamErrorKind::Other);
+    // AAUDIO_ERROR_BASE = -900, DISCONNECTED = -899, ILLEGAL_ARGUMENT = -898,
+    // INTERNAL = -896, INVALID_STATE = -895, INVALID_HANDLE = -892,
+    // UNIMPLEMENTED = -890, TIMEOUT = -885 in the NDK. XRUN is handled via
+    // AAUDIO_STREAM_STATE_OVERFLOW in the state machine, not a result code.
+    assert_eq!(classify_aaudio_error(-899), StreamErrorKind::DeviceLost);
+    assert_eq!(classify_aaudio_error(-885), StreamErrorKind::Other);
     assert_eq!(classify_aaudio_error(0), StreamErrorKind::Other);
 }
 ```
@@ -191,7 +195,7 @@ Expected: FAIL — `stream_config` module does not exist.
 
 - [ ] **Step 3: Implement the conversion module**
 
-`crates-mobile/fp-backends-mobile/src/stream_config.rs`: define the four format constants as `pub const i32`, then `aaudio_format` as a four-arm `match` over `SampleFormat` (I24 → the I32 code, with a comment that AAudio has no 24-bit packed code), and `classify_aaudio_error` matching `-892` → `DeviceLost` and everything else → `Other` (the XRUN case is reported from the state callback of the real stream, not from a result code, and gets its arm in the next plan). Add `pub mod stream_config;` to `lib.rs`.
+`crates-mobile/fp-backends-mobile/src/stream_config.rs`: define the four format constants as `pub const i32` with the NDK r27 values (`AAUDIO_FORMAT_PCM_I16 = 1`, `AAUDIO_FORMAT_PCM_FLOAT = 2`, `AAUDIO_FORMAT_PCM_I32 = 4`, plus `AAUDIO_FORMAT_PCM_I24_PACKED = 3` in a comment noting it requires API 31 > minSdk 26), then `aaudio_format` as a four-arm `match` over `SampleFormat` (I24 → the I32 code, with a comment that packed 24-bit needs API 31), and `classify_aaudio_error` matching `-899` (`AAUDIO_ERROR_DISCONNECTED`) → `DeviceLost` and everything else → `Other` (the XRUN case is reported from the state callback of the real stream, not from a result code, and gets its arm in the next plan). Add `pub mod stream_config;` to `lib.rs`.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
