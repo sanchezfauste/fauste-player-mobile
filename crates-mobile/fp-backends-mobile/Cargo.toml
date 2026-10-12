@@ -22,6 +22,12 @@ uniffi = { version = "0.28", optional = true }
 [target.'cfg(target_os = "android")'.dependencies]
 aaudio-sys = "0.1"
 
+# The conformance and engine-hook smoke tests: compiled for Android, where
+# they run, and on the host, where they reduce to zero tests.
+[dev-dependencies]
+fp-engine.workspace = true
+fp-model.workspace = true
+
 # Own lints table instead of `[lints] workspace = true`: the workspace forbids
 # unsafe_code, which cannot be relaxed locally. This crate needs one sanctioned
 # FFI boundary (src/aaudio_backend.rs on Android), so it carries deny-level
