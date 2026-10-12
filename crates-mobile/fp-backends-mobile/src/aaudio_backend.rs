@@ -388,6 +388,12 @@ mod android_impl {
         errors: Arc<dyn StreamErrorSink>,
     ) -> Result<Box<dyn OutputStream>, BackendError> {
         let (mut producer, core) = CallbackCore::new();
+        // The monitor's sink is cloned before the box is handed to AAudio:
+        // between `Box::into_raw` and the post-`close` reclaim, only AAudio
+        // callbacks may touch the box, so the opening thread must not take
+        // even a shared reference into it (the data callback may already be
+        // holding `&mut` from the RT thread).
+        let monitor_errors = Arc::clone(&errors);
         let ctx = Box::new(StreamCtx {
             core,
             errors,
@@ -400,7 +406,8 @@ mod android_impl {
             // up; a failed open dropped the producer unused instead.
             if let Err(renderer) = producer.push(renderer) {
                 drop(renderer);
-                // SAFETY: `stream` is live and not started; closed once.
+                // SAFETY: `stream` is live (started, but `close` drains any
+                // running callbacks); closed exactly once.
                 let _ = unsafe { aaudio_sys::AAudioStream_close(stream) };
                 return Err(BackendError::Backend(
                     "renderer handoff failed: the ring was not empty".to_owned(),
@@ -414,8 +421,13 @@ mod android_impl {
                     // SAFETY: the raw handle crosses the thread boundary as
                     // `usize`; the monitor joins before the stream is closed.
                     let stream = stream as usize;
-                    let errors = Arc::clone(&unsafe { &*ctx }.errors);
-                    move || monitor_xruns(stream as *mut aaudio_sys::AAudioStream, stop, errors)
+                    move || {
+                        monitor_xruns(
+                            stream as *mut aaudio_sys::AAudioStream,
+                            stop,
+                            monitor_errors,
+                        )
+                    }
                 })
                 .ok();
             Ok(Box::new(AaudioStream {
@@ -430,9 +442,11 @@ mod android_impl {
             }) as Box<dyn OutputStream>)
         });
         if result.is_err() {
-            // SAFETY: the stream never started (or failed before any callback
-            // could run), and `try_open` closed a stream it opened on failure;
-            // reclaim the context box exactly once.
+            // SAFETY: every error path closed any stream it opened (an open
+            // failure never produced one) — and `close` drains callbacks, so
+            // none can be running even on the push-failure path, where a
+            // started stream may already have run silence fills. With no
+            // callbacks live, reclaim the context box exactly once.
             drop(unsafe { Box::from_raw(ctx) });
         }
         result
@@ -451,15 +465,34 @@ mod android_impl {
             let is_last = index + 1 == attempts.len();
             match open_attempt(config, *capacity, ctx) {
                 Ok((stream, actual)) => {
-                    if config.exact_buffer && actual != config.buffer_frames {
-                        // SAFETY: `stream` is live and closed exactly once.
-                        let _ = unsafe { aaudio_sys::AAudioStream_close(stream) };
-                        return Err(BackendError::Unsupported(format!(
-                            "AAudio gave a buffer of {actual} frames, not the exact {} requested",
-                            config.buffer_frames
-                        )));
+                    if config.exact_buffer {
+                        // Exact mode needs a trustworthy readback: an error
+                        // from `getBufferSizeInFrames` is a refusal, not a
+                        // pass against the requested size.
+                        let Ok(actual) = u32::try_from(actual) else {
+                            // SAFETY: `stream` is live and closed exactly once.
+                            let _ = unsafe { aaudio_sys::AAudioStream_close(stream) };
+                            return Err(BackendError::Unsupported(
+                                "AAudio could not report the actual buffer size, so the exact \
+                                 request cannot be confirmed"
+                                    .to_owned(),
+                            ));
+                        };
+                        if actual != config.buffer_frames {
+                            // SAFETY: `stream` is live and closed exactly once.
+                            let _ = unsafe { aaudio_sys::AAudioStream_close(stream) };
+                            return Err(BackendError::Unsupported(format!(
+                                "AAudio gave a buffer of {actual} frames, not the exact {} requested",
+                                config.buffer_frames
+                            )));
+                        }
+                        return Ok((stream, actual));
                     }
-                    return Ok((stream, actual));
+                    // Non-exact: an unreadable size falls back to the
+                    // request — a device that refuses a fixed readback must
+                    // still play rather than leave the bus silent.
+                    let buffer_frames = u32::try_from(actual).unwrap_or(config.buffer_frames);
+                    return Ok((stream, buffer_frames));
                 }
                 Err(err) => {
                     last_err = err;
@@ -473,13 +506,14 @@ mod android_impl {
     }
 
     /// One open attempt: build, configure, open, set the buffer size. On
-    /// success the stream is stopped (not started) and its buffer size read
-    /// back; ownership passes to the caller.
+    /// success the stream is started and its raw buffer-size readback (which
+    /// may be a negative error) is returned; stream ownership passes to the
+    /// caller.
     fn open_attempt(
         config: &StreamConfig,
         capacity: Option<u32>,
         ctx: *mut StreamCtx,
-    ) -> Result<(*mut aaudio_sys::AAudioStream, u32), BackendError> {
+    ) -> Result<(*mut aaudio_sys::AAudioStream, i32), BackendError> {
         let mut builder: *mut aaudio_sys::AAudioStreamBuilder = ptr::null_mut();
         // SAFETY: `builder` is a valid out-pointer to stack memory; on OK the
         // returned builder is deleted below on every path.
@@ -522,7 +556,6 @@ mod android_impl {
             let _ = unsafe { aaudio_sys::AAudioStream_close(stream) };
             return Err(open_error(started));
         }
-        let buffer_frames = u32::try_from(actual).unwrap_or(config.buffer_frames);
-        Ok((stream, buffer_frames))
+        Ok((stream, actual))
     }
 }
