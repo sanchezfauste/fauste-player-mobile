@@ -1,0 +1,68 @@
+name: Android
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # temurin 21 — supported by Gradle 9.3.1 / AGP 8.13.2 (NOT 25).
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # ubuntu-latest has the Android SDK preinstalled but not this NDK.
+      - name: Android SDK components
+        run: |
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;27.0.12077973"
+
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.98.1
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
+
+      - name: Android Rust targets
+        run: rustup target add aarch64-linux-android x86_64-linux-android
+
+      - name: Gradle build and tests
+        run: ./gradlew buildRust :fp-app-mobile-shared:test :composeApp:assembleDebug
+
+      # Bindings drift check: regenerate the Kotlin bindings into a temp dir
+      # and diff against the committed files. IMPORTANT: no ktlint here — the
+      # committed bindings are generator-unformatted, so CI must regenerate
+      # under the same tooling state (raw uniffi-bindgen output) or it would
+      # fail on formatting alone. ktlint formatting is Phase 1 cleanup.
+      - name: Kotlin bindings drift check
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          cargo build -p fp-backends-mobile --features uniffi
+          cargo run -p uniffi-bindgen -- generate \
+            --library target/debug/libfp_backends_mobile.so \
+            --language kotlin \
+            --out-dir "$tmp"
+          # uniffi-bindgen writes into a package-path subtree
+          # (<tmp>/org/fauste/player/rust/); committed bindings live flat.
+          gen_dir="$(dirname "$(find "$tmp" -name '*.kt' -print -quit)")"
+          diff -ru "$gen_dir" crates-mobile/fp-backends-mobile/bindings/kotlin
+
+      - uses: gradle/actions/wrapper-validation@v3
