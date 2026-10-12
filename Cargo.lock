@@ -423,6 +423,7 @@ version = "0.1.0"
 dependencies = [
  "aaudio-sys",
  "fp-backends",
+ "rtrb",
  "thiserror 2.0.21",
  "tracing",
  "uniffi",

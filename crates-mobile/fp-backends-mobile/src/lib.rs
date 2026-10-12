@@ -1,6 +1,7 @@
 //! Mobile audio backends implementing the desktop `AudioBackend` trait.
 
 mod aaudio_backend;
+pub mod callback;
 pub mod stream_config;
 pub mod stream_params;
 
