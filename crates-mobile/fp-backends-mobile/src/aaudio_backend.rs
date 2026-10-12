@@ -357,8 +357,9 @@ mod android_impl {
             aaudio_sys::AAudioStreamBuilder_setFormat(builder, aaudio_sys::FORMAT_PCM_FLOAT);
             aaudio_sys::AAudioStreamBuilder_setSharingMode(builder, sharing_mode(config.exclusive));
             aaudio_sys::AAudioStreamBuilder_setPerformanceMode(builder, performance_mode());
-            aaudio_sys::AAudioStreamBuilder_setUsage(builder, aaudio_sys::USAGE_MEDIA);
-            aaudio_sys::AAudioStreamBuilder_setContentType(builder, aaudio_sys::CONTENT_TYPE_MUSIC);
+            // No setUsage/setContentType: usage already defaults to MEDIA and
+            // contentType is only a volume/hint attribute, and both setters
+            // are API 28+ — skipping them keeps the API-26 link floor.
             aaudio_sys::AAudioStreamBuilder_setDataCallback(
                 builder,
                 Some(data_callback),

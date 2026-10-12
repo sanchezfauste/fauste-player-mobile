@@ -10,7 +10,7 @@
 # KVM is required: -no-accel is not acceptable for these timing-sensitive
 # tests. cargo-ndk 4.1.2 passes `cargo ndk test` through to `cargo` and does
 # NOT deploy/run test binaries on a device, so this script uses the documented
-# fallback: `cargo ndk -t x86_64 -P 28 test --no-run` (build) + adb push +
+# fallback: `cargo ndk -t x86_64 -P 26 test --no-run` (build) + adb push +
 # `adb shell LD_LIBRARY_PATH=...` (run). That path is what applies here.
 set -u
 set -o pipefail
@@ -94,14 +94,8 @@ while true; do
 done
 say "booted: $SERIAL"
 
-# NOTE on platform: the backend calls AAudioStreamBuilder_setUsage /
-# setContentType, which are API 28+ — the API 26 libaaudio stub lacks them, so
-# the harness link must target 28. The emulator (API 34) satisfies this at
-# runtime; the app's minSdk=26 floor is unaffected by the test platform. The
-# proper follow-up for keeping a 26 NDK floor is runtime symbol resolution for
-# those two advisory setters (see the task-5 report).
-say "building the test harness (cargo ndk -t x86_64 -P 28 test --no-run)"
-cargo ndk -t x86_64 -P 28 test --no-run -p fp-backends-mobile || die "ndk test build failed"
+say "building the test harness (cargo ndk -t x86_64 -P 26 test --no-run)"
+cargo ndk -t x86_64 -P 26 test --no-run -p fp-backends-mobile || die "ndk test build failed"
 
 TARGET_DIR="target/x86_64-linux-android/debug/deps"
 [ -d "$TARGET_DIR" ] || die "no android build directory ($TARGET_DIR)"
