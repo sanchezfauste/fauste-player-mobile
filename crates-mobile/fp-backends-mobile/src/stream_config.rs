@@ -5,6 +5,7 @@
 //! pulling in `aaudio-sys`, so this module and its tests run on the host
 //! without the NDK. Values mirror the NDK r27 `aaudio/AAudio.h` header.
 
+use crate::stream_params::AAUDIO_ERROR_DISCONNECTED;
 use fp_backends::{SampleFormat, StreamErrorKind};
 
 /// `AAUDIO_FORMAT_PCM_I16`: signed 16-bit integer samples.
@@ -50,8 +51,7 @@ pub fn aaudio_format(format: SampleFormat) -> i32 {
 /// Classifies an AAudio result code into a desktop error kind.
 pub fn classify_aaudio_error(code: i32) -> StreamErrorKind {
     match code {
-        // AAUDIO_ERROR_DISCONNECTED: the device went away mid-stream.
-        -899 => StreamErrorKind::DeviceLost,
+        AAUDIO_ERROR_DISCONNECTED => StreamErrorKind::DeviceLost,
         // Everything else (including AAUDIO_OK) is not a device loss. XRUNs
         // are exposed by AAudio via AAudioStream_getXRunCount() and the
         // error callback (onErrorAfterClose with AAUDIO_ERROR_TIMEOUT),

@@ -2,6 +2,7 @@
 
 mod aaudio_backend;
 pub mod stream_config;
+pub mod stream_params;
 
 #[cfg(feature = "uniffi")]
 uniffi::setup_scaffolding!("fauste_player");
