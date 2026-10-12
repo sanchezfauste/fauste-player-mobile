@@ -1,8 +1,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 //! The desktop `conform()` checks ported for the AAudio backend. The whole
 //! suite is Android-only: on the host it compiles to zero tests. Run it on a
-//! device or emulator with `cargo +android test -p fp-backends-mobile --test
-//! conformance` (the on-device check Task 5 performs).
+//! device or emulator via `scripts/emulator-test.sh` (the on-device check Task
+//! 5 performs).
 #![cfg(target_os = "android")]
 
 use std::sync::Arc;

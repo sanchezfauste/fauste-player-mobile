@@ -1,8 +1,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 //! The desktop `Engine` accepts the AAudio backend — the Phase 1 milestone
 //! "Integration with fp-engine::Engine". Android-only; zero tests on the
-//! host. Mirrors how `fp-app/src/main.rs` wires `system_backends()` (here:
-//! the single AAudio backend) plus the null fallback into `Engine::new`.
+//! host. The test passes only the AAudio backend to `Engine::new`; that
+//! function internally appends the null backend as a last-resort fallback.
 #![cfg(target_os = "android")]
 
 use std::sync::Arc;
