@@ -14,7 +14,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # temurin 21 — supported by Gradle 9.3.1 / AGP 8.13.2 (NOT 25).
+      # Path deps resolve ../fauste-player relative to this repo's checkout;
+      # checkout@v4 accepts paths outside $GITHUB_WORKSPACE. ref rides the
+      # desktop tip — pin a SHA here if CI should become flaky-coupled to
+      # desktop changes.
+      - name: Check out the desktop repo (path dependencies)
+        uses: actions/checkout@v4
+        with:
+          repository: sanchezfauste/fauste-player
+          ref: master
+          path: ../fauste-player
+
+      # temurin 21 — pinned on runners as the boring, cheapest, fully-supported
+      # LTS for Gradle 9.3.1 / AGP 8.13.2 (Gradle 9.1+ also supports JDK 25;
+      # 21 is a stability choice, not a support limit).
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

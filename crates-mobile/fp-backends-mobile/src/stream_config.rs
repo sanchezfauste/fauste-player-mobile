@@ -52,9 +52,10 @@ pub fn classify_aaudio_error(code: i32) -> StreamErrorKind {
     match code {
         // AAUDIO_ERROR_DISCONNECTED: the device went away mid-stream.
         -899 => StreamErrorKind::DeviceLost,
-        // Everything else (including AAUDIO_OK) is not a device loss. XRUN
-        // is reported from the state callback of the real stream, not from a
-        // result code, and gets its arm in the next plan.
+        // Everything else (including AAUDIO_OK) is not a device loss. XRUNs
+        // are exposed by AAudio via AAudioStream_getXRunCount() and the
+        // error callback (onErrorAfterClose with AAUDIO_ERROR_TIMEOUT),
+        // not from a result code, and gets its arm in the next plan.
         _ => StreamErrorKind::Other,
     }
 }

@@ -1,5 +1,6 @@
 [versions]
-# Version set resolved for JDK 25 (see task-5-report.md for sources):
+# Version set resolved for JDK 25 (sources and reasoning for this version
+# set: commit message of 8f3af91):
 # Gradle 9.x runs on Java 25 from 9.1.0; AGP 8.13 is the last line keeping the
 # classic KMP module pattern; Kotlin 2.2.x is what Compose Multiplatform 1.9.x
 # builds against; the compose BOM 2025.11.00 manages exactly Jetpack Compose

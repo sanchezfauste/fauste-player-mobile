@@ -14,6 +14,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Path deps resolve ../fauste-player relative to this repo's checkout;
+      # checkout@v4 accepts paths outside $GITHUB_WORKSPACE. ref rides the
+      # desktop tip — pin a SHA here if CI should become flaky-coupled to
+      # desktop changes.
+      - name: Check out the desktop repo (path dependencies)
+        uses: actions/checkout@v4
+        with:
+          repository: sanchezfauste/fauste-player
+          ref: master
+          path: ../fauste-player
+
       # Installs exactly the toolchain pinned in rust-toolchain.toml (1.98.1)
       # with the rustfmt/clippy components it requests.
       - uses: dtolnay/rust-toolchain@v1
@@ -32,6 +43,9 @@ jobs:
 
       - name: Lint
         run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Clippy (uniffi feature)
+        run: cargo clippy --workspace --all-targets --features uniffi -- -D warnings
 
       - name: Test (host)
         run: cargo test --workspace

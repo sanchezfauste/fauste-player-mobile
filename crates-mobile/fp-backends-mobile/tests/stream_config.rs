@@ -31,8 +31,9 @@ fn aaudio_error_codes_classify_into_desktop_kinds() {
     use fp_backends_mobile::stream_config::classify_aaudio_error;
     // AAUDIO_ERROR_BASE = -900, DISCONNECTED = -899, ILLEGAL_ARGUMENT = -898,
     // INTERNAL = -896, INVALID_STATE = -895, INVALID_HANDLE = -892,
-    // UNIMPLEMENTED = -890, TIMEOUT = -885 in the NDK. XRUN is handled via
-    // AAUDIO_STREAM_STATE_OVERFLOW in the state machine, not a result code.
+    // UNIMPLEMENTED = -890, TIMEOUT = -885 in the NDK. XRUNs are exposed by
+    // AAudio via AAudioStream_getXRunCount() and the error callback
+    // (onErrorAfterClose with AAUDIO_ERROR_TIMEOUT), not a result code.
     assert_eq!(classify_aaudio_error(-899), StreamErrorKind::DeviceLost);
     assert_eq!(classify_aaudio_error(-885), StreamErrorKind::Other);
     assert_eq!(classify_aaudio_error(0), StreamErrorKind::Other);
