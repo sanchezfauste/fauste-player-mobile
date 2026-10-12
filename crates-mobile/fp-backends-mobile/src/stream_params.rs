@@ -11,7 +11,7 @@ use fp_backends::dsd::DsdStream;
 use fp_backends::{BackendError, DeviceId, StreamConfig};
 
 /// The id of the single device AAudio exposes: its default output.
-const DEFAULT_DEVICE_ID: &str = "default";
+pub const DEFAULT_DEVICE_ID: &str = "default";
 
 /// `AAUDIO_DIRECTION_OUTPUT` (NDK `aaudio/AAudio.h`): the builder opens a
 /// playback stream.
@@ -36,6 +36,14 @@ pub const AAUDIO_CALLBACK_RESULT_STOP: i32 = 1;
 /// `AAUDIO_ERROR_DISCONNECTED`: the device went away mid-stream. The Phase-0
 /// deferral: the magic literal in `classify_aaudio_error` becomes this name.
 pub const AAUDIO_ERROR_DISCONNECTED: i32 = -899;
+/// `AAUDIO_ERROR_ILLEGAL_ARGUMENT`: an invalid parameter was passed to AAudio.
+pub const AAUDIO_ERROR_ILLEGAL_ARGUMENT: i32 = -898;
+/// `AAUDIO_ERROR_INVALID_STATE`: the requested operation is not appropriate
+/// for the current state of AAudio.
+pub const AAUDIO_ERROR_INVALID_STATE: i32 = -895;
+/// `AAUDIO_ERROR_UNAVAILABLE`: a resource or information is unavailable —
+/// e.g. the device is held by another application for now.
+pub const AAUDIO_ERROR_UNAVAILABLE: i32 = -889;
 
 /// The `aaudio_sharing_mode_t` for the desktop `exclusive` flag: `EXCLUSIVE`
 /// when requested, `SHARED` otherwise.
@@ -79,6 +87,26 @@ pub fn check_dsd(config: &StreamConfig) -> Result<(), BackendError> {
         Some(DsdStream::Dop) => Err(BackendError::Unsupported(
             "DoP needs exact integer words, but the AAudio backend opens float PCM".to_owned(),
         )),
+    }
+}
+
+/// Maps a failed `AAudioStreamBuilder_openStream` result to the desktop error
+/// enum: a device that vanished while we opened is not found, a rejected
+/// parameter set is unsupported, and an audio service that cannot open the
+/// stream right now is `Busy` (the same configuration may open a moment
+/// later). Everything else is an opaque backend failure carrying the code.
+pub fn open_error(code: i32) -> BackendError {
+    match code {
+        AAUDIO_ERROR_DISCONNECTED => {
+            BackendError::DeviceNotFound(DeviceId(DEFAULT_DEVICE_ID.to_owned()))
+        }
+        AAUDIO_ERROR_ILLEGAL_ARGUMENT => BackendError::Unsupported(format!(
+            "AAudio refused the stream configuration (error {code})"
+        )),
+        AAUDIO_ERROR_UNAVAILABLE | AAUDIO_ERROR_INVALID_STATE => {
+            BackendError::Busy(format!("AAudio cannot open the stream now (error {code})"))
+        }
+        _ => BackendError::Backend(format!("AAudio failed to open the stream (error {code})")),
     }
 }
 

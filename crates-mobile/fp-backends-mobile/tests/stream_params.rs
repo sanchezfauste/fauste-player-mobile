@@ -2,9 +2,11 @@ use fp_backends::dsd::DsdStream;
 use fp_backends::{BackendError, DeviceId, StreamConfig};
 use fp_backends_mobile::stream_params::{
     AAUDIO_CALLBACK_RESULT_CONTINUE, AAUDIO_CALLBACK_RESULT_STOP, AAUDIO_CONTENT_TYPE_MUSIC,
-    AAUDIO_DIRECTION_OUTPUT, AAUDIO_ERROR_DISCONNECTED, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY,
+    AAUDIO_DIRECTION_OUTPUT, AAUDIO_ERROR_DISCONNECTED, AAUDIO_ERROR_ILLEGAL_ARGUMENT,
+    AAUDIO_ERROR_INVALID_STATE, AAUDIO_ERROR_UNAVAILABLE, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY,
     AAUDIO_PERFORMANCE_MODE_NONE, AAUDIO_SHARING_MODE_EXCLUSIVE, AAUDIO_SHARING_MODE_SHARED,
-    AAUDIO_USAGE_MEDIA, buffer_attempts, check_device, check_dsd, performance_mode, sharing_mode,
+    AAUDIO_USAGE_MEDIA, buffer_attempts, check_device, check_dsd, open_error, performance_mode,
+    sharing_mode,
 };
 
 /// AAudio builder constants from the NDK headers (r27 `AAudio.h`), asserted
@@ -24,6 +26,42 @@ fn aaudio_builder_constants_match_the_ndk_headers() {
     // AAUDIO_ERROR_BASE = -900, so DISCONNECTED is -899: the constant the
     // Phase-0 `classify_aaudio_error` deferred.
     assert_eq!(AAUDIO_ERROR_DISCONNECTED, -899);
+    assert_eq!(AAUDIO_ERROR_ILLEGAL_ARGUMENT, -898);
+    assert_eq!(AAUDIO_ERROR_INVALID_STATE, -895);
+    assert_eq!(AAUDIO_ERROR_UNAVAILABLE, -889);
+}
+
+#[test]
+fn open_error_maps_a_disconnected_device_to_not_found() {
+    assert_eq!(
+        open_error(AAUDIO_ERROR_DISCONNECTED),
+        BackendError::DeviceNotFound(DeviceId("default".to_owned()))
+    );
+}
+
+#[test]
+fn open_error_maps_a_refused_parameter_set_to_unsupported() {
+    let err = open_error(AAUDIO_ERROR_ILLEGAL_ARGUMENT);
+    assert!(matches!(err, BackendError::Unsupported(_)), "{err:?}");
+}
+
+#[test]
+fn open_error_maps_a_temporarily_held_device_to_busy() {
+    assert!(matches!(
+        open_error(AAUDIO_ERROR_UNAVAILABLE),
+        BackendError::Busy(_)
+    ));
+    assert!(matches!(
+        open_error(AAUDIO_ERROR_INVALID_STATE),
+        BackendError::Busy(_)
+    ));
+}
+
+#[test]
+fn open_error_maps_anything_else_to_backend() {
+    assert!(matches!(open_error(-1), BackendError::Backend(_)));
+    assert!(matches!(open_error(0), BackendError::Backend(_)));
+    assert!(matches!(open_error(42), BackendError::Backend(_)));
 }
 
 #[test]

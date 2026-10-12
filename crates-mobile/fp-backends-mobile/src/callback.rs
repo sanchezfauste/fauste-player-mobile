@@ -34,7 +34,8 @@ impl CallbackCore {
     /// Builds the callback state for one stream. The one-slot handoff ring is
     /// created here, so the caller keeps only the producer: it pushes the
     /// renderer after the stream has opened, and a failed open drops that
-    /// producer unused.
+    /// producer unused. Handoff contract: pushes after delivery are never
+    /// consumed (the freed slot holds the `Box` until drop).
     ///
     /// The callback receives the channel count per `fill` call (the
     /// `Renderer::render` trait carries it), and a float-only backend needs
