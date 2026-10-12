@@ -668,3 +668,18 @@ Push the branch, `gh pr create` with a Conventional Commit title (`feat(mobile):
 - The desktop repo's `opus-decoder` `[patch.crates-io]` entry applies to the desktop workspace, not this one. If `cargo deny check` flags `opus-decoder` licences or advisories here, mirror the patch by adding the same `[patch.crates-io]` pointing at `../fauste-player/vendor/opus-decoder` — that references the vendor directory without modifying it.
 - Android instrumented tests (emulator) are deliberately **not** in Phase 0 CI; they arrive with Phase 1, when there is audio to exercise. Host-lane `cargo test` covers the host branches in the meantime.
 - If `aaudio-sys 0.1` does not compile against NDK r27 headers, check the crate's documented NDK floor first and prefer bumping the crate over vendoring bindings.
+
+## Deferred to Phase 1 (from the Phase 0 final review)
+
+Items triaged out of Phase 0 that the Phase 1 plan must pick up:
+
+- Switch `androidMain` to the JNA AAR before any real FFI call (TODO sits at the dependency site in `fp-app-mobile-shared/build.gradle.kts`; the plain jar ships no Android `libjnidispatch.so`).
+- Pin ktlint in CI and regenerate+commit the formatted Kotlin bindings once (drift check then regenerates formatted output).
+- Add `pub const AAUDIO_ERROR_DISCONNECTED: i32 = -899` next to the format constants and use it in `classify_aaudio_error` (replaces the magic literal).
+- XRUN handling: there is no `AAUDIO_STREAM_STATE_OVERFLOW` state in aaudio-sys 0.1.0 — use `AAudioStream_getXRunCount()` and the error callback; the corrected comments in `stream_config.rs` describe the mechanism.
+- Cache or explicitly document-uncached the AAudio availability probe (currently opens+closes a real stream per call); keep the post-open `state == AAUDIO_STREAM_STATE_OPEN` runtime check — it is the only on-device cross-validation of the locally re-declared state constants.
+- Give `buildRust` declared inputs/outputs (also fixes its configuration-cache-hostile execution-time `projectDirectory` refs) and prefer cargo-ndk NDK auto-detection over the pinned `ANDROID_NDK_HOME` fallback.
+- Add `permissions: contents: read` to both workflows (revisit alongside any CI changes).
+- Add the emulator lane to CI with the desktop conformance suite (`../fauste-player/crates/fp-backends/tests/conformance.rs`) once the real stream exists.
+- Real-time-path rules apply the moment a data callback exists: no allocation, no locks, no logging, no panics in the callback path (the conversion functions already comply).
+- The desktop-repo checkout in CI rides the desktop `master` tip; pin a SHA in both workflows if reproducibility ever matters more than tandem development.
