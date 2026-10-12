@@ -12,6 +12,10 @@ ignore = [
   # It parses the font of the Wayland title bar, through winit's sctk-adwaita
   # (ab_glyph), on Linux only. Revisit when sctk-adwaita moves to another parser.
   { id = "RUSTSEC-2026-0192", reason = "unmaintained notice; title-bar font via winit's sctk-adwaita" },
+  # `bincode` 1.x development has ceased (unmaintained-class notice, not an
+  # exploitable vulnerability). It reaches this workspace only through
+  # UniFFI's proc-macro.
+  { id = "RUSTSEC-2025-0141", reason = "uniffi_macros build-time bincode 1.3.3 (proc-macro only, never in the shipped binary); uniffi 0.28 has no fix, revisit on uniffi upgrade" },
 ]
 
 [licenses]
