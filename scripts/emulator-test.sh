@@ -101,7 +101,9 @@ TARGET_DIR="target/x86_64-linux-android/debug/deps"
 [ -d "$TARGET_DIR" ] || die "no android build directory ($TARGET_DIR)"
 found=0
 overall=0
-for t in "$TARGET_DIR"/conformance-* "$TARGET_DIR"/engine_smoke-*; do
+# The decode_smoke glob has no cfg gate in the test: `-` is the hash suffix
+# convention of the other suites, `_*` needed because the crate name uses it.
+for t in "$TARGET_DIR"/conformance-* "$TARGET_DIR"/engine_smoke-* "$TARGET_DIR"/decode_smoke-*; do
     [ -x "$t" ] || continue
     found=1
     name=$(basename "$t")

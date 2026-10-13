@@ -28,8 +28,10 @@ uniffi = { version = "0.28", optional = true }
 aaudio-sys = "0.1"
 
 # The conformance and engine-hook smoke tests: compiled for Android, where
-# they run, and on the host, where they reduce to zero tests.
+# they run, and on the host, where they reduce to zero tests. fp-decode backs
+# the decode smoke, which runs ON both (host and Android, no cfg gate).
 [dev-dependencies]
+fp-decode.workspace = true
 fp-engine.workspace = true
 fp-model.workspace = true
 

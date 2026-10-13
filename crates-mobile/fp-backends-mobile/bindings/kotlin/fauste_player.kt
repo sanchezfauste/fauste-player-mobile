@@ -785,6 +785,12 @@ internal interface UniffiLib : Library {
         uniffi_out_err: UniffiRustCallStatus,
     ): Pointer
 
+    fun uniffi_fp_backends_mobile_fn_method_fausteengine_enqueue(
+        `ptr`: Pointer,
+        `track`: RustBuffer.ByValue,
+        uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+
     fun uniffi_fp_backends_mobile_fn_method_fausteengine_get_available_backends(
         `ptr`: Pointer,
         uniffi_out_err: UniffiRustCallStatus,
@@ -1044,6 +1050,8 @@ internal interface UniffiLib : Library {
         uniffi_out_err: UniffiRustCallStatus,
     ): Unit
 
+    fun uniffi_fp_backends_mobile_checksum_method_fausteengine_enqueue(): Short
+
     fun uniffi_fp_backends_mobile_checksum_method_fausteengine_get_available_backends(): Short
 
     fun uniffi_fp_backends_mobile_checksum_method_fausteengine_get_state(): Short
@@ -1077,31 +1085,34 @@ private fun uniffiCheckContractApiVersion(lib: UniffiLib) {
 
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: UniffiLib) {
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_enqueue() != 53435.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_get_available_backends() != 38127.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_get_state() != 31323.toShort()) {
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_get_state() != 61465.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_pause() != 58182.toShort()) {
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_pause() != 21832.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_play() != 64270.toShort()) {
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_play() != 59136.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_seek() != 17302.toShort()) {
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_seek() != 51291.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_set_backend() != 46432.toShort()) {
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_set_backend() != 2890.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_set_volume() != 45997.toShort()) {
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_set_volume() != 13018.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_stop() != 38748.toShort()) {
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_stop() != 63300.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_fp_backends_mobile_checksum_constructor_fausteengine_new() != 16743.toShort()) {
+    if (lib.uniffi_fp_backends_mobile_checksum_constructor_fausteengine_new() != 43904.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -1484,44 +1495,84 @@ private class JavaLangRefCleanable(
     override fun clean() = cleanable.clean()
 }
 
+/**
+ * The mobile engine: a `PlayerCore` behind the UniFFI object API, driving
+ * the MAIN player (`AppState.players[0]`, the only one the default config
+ * creates).
+ */
 public interface FausteEngineInterface {
+    /**
+     * Appends the track to the end of the main player's playlist via
+     * `Command::InsertPaths` — the same command the desktop UI sends for
+     * "add files to a playlist" (`fp-app/src/ui/app.rs:623`). A missing or
+     * unreadable file is not rejected here: the model marks its file state
+     * when the source fails, as on the desktop.
+     */
+    fun `enqueue`(`track`: Track)
+
     fun `getAvailableBackends`(): List<BackendInfo>
 
+    /**
+     * The snapshot the mobile UI draws: status from the main player's
+     * transport, the current track from the model, the position from the
+     * telemetry (exactly the desktop Bridge's `playback` read,
+     * `fp-app/src/remote.rs:100-113`), duration from the model's track,
+     * volume from the player state (linear gain) and the backend id the
+     * engine reported in use (`live.audio_system_in_use`, mirrored from
+     * `EngineEvent::AudioSystemInUse`; `"null"` until the first report,
+     * matching the engine's last-resort fallback).
+     */
     fun `getState`(): EngineState
 
     /**
-     * Phase 2 no-op: the transport is not wired yet.
+     * `Command::Pause` for the main player (`fp-app/src/ui/player.rs:749`).
      */
     fun `pause`()
 
     /**
-     * Phase 2 no-op: the transport is not wired yet.
+     * `Command::Play` for the main player (`fp-app/src/ui/player.rs:689`).
+     * From stopped it starts the player's `next` entry, which the model
+     * derives from the playlist order after `enqueue`
+     * (`fp-model/src/reducer.rs`, `refresh_next`).
      */
     fun `play`()
 
     /**
-     * Phase 2 no-op: the transport is not wired yet.
+     * `Command::Seek(player, seconds)` of the current entry
+     * (`fp-app/src/ui/player.rs:864`).
      */
     fun `seek`(`position`: kotlin.Double)
 
     /**
-     * Phase 2 no-op: the transport is not wired yet.
+     * Phase 3: backend switching. The desktop switches audio systems
+     * through the settings UI (`config.outputs.backend` via
+     * `Command::UpdateConfig`, applied as `EngineAction::ApplyAudioSystem`);
+     * there is no single "switch backend" command to call here, and the
+     * mobile settings UI that would own this is Phase 3. For now this is a
+     * documented no-op.
      */
     fun `setBackend`(`backendId`: kotlin.String)
 
     /**
-     * Phase 2 no-op: the transport is not wired yet.
+     * `Command::SetVolume(player, volume)` with the linear gain 0.0–1.0
+     * (`fp-app/src/ui/player.rs:502` — the desktop converts its fader with
+     * `gain_from_fader`; the FFI takes the linear value directly).
      */
     fun `setVolume`(`volume`: kotlin.Float)
 
     /**
-     * Phase 2 no-op: the transport is not wired yet.
+     * `Command::Stop` for the main player (`fp-app/src/ui/player.rs:742`).
      */
     fun `stop`()
 
     companion object
 }
 
+/**
+ * The mobile engine: a `PlayerCore` behind the UniFFI object API, driving
+ * the MAIN player (`AppState.players[0]`, the only one the default config
+ * creates).
+ */
 open class FausteEngine :
     Disposable,
     AutoCloseable,
@@ -1541,9 +1592,16 @@ open class FausteEngine :
         this.pointer = null
         this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
     }
+
+    /**
+     * Wires the full player core (see `PlayerCore::new`). The
+     * `sample_rate`/`buffer_frames` fields of `config` override the loaded
+     * configuration at boot (`PlayerCore::with_overrides`); Phase 3's
+     * settings UI will own them afterwards.
+     */
     constructor(`config`: EngineConfig) :
         this(
-            uniffiRustCall { _status ->
+            uniffiRustCallWithError(FausteException) { _status ->
                 UniffiLib.INSTANCE.uniffi_fp_backends_mobile_fn_constructor_fausteengine_new(
                     FfiConverterTypeEngineConfig.lower(`config`),
                     _status,
@@ -1615,6 +1673,25 @@ open class FausteEngine :
             UniffiLib.INSTANCE.uniffi_fp_backends_mobile_fn_clone_fausteengine(pointer!!, status)
         }
 
+    /**
+     * Appends the track to the end of the main player's playlist via
+     * `Command::InsertPaths` — the same command the desktop UI sends for
+     * "add files to a playlist" (`fp-app/src/ui/app.rs:623`). A missing or
+     * unreadable file is not rejected here: the model marks its file state
+     * when the source fails, as on the desktop.
+     */
+    @Throws(FausteException::class)
+    override fun `enqueue`(`track`: Track) =
+        callWithPointer {
+            uniffiRustCallWithError(FausteException) { _status ->
+                UniffiLib.INSTANCE.uniffi_fp_backends_mobile_fn_method_fausteengine_enqueue(
+                    it,
+                    FfiConverterTypeTrack.lower(`track`),
+                    _status,
+                )
+            }
+        }
+
     override fun `getAvailableBackends`(): List<BackendInfo> =
         FfiConverterSequenceTypeBackendInfo.lift(
             callWithPointer {
@@ -1624,6 +1701,16 @@ open class FausteEngine :
             },
         )
 
+    /**
+     * The snapshot the mobile UI draws: status from the main player's
+     * transport, the current track from the model, the position from the
+     * telemetry (exactly the desktop Bridge's `playback` read,
+     * `fp-app/src/remote.rs:100-113`), duration from the model's track,
+     * volume from the player state (linear gain) and the backend id the
+     * engine reported in use (`live.audio_system_in_use`, mirrored from
+     * `EngineEvent::AudioSystemInUse`; `"null"` until the first report,
+     * matching the engine's last-resort fallback).
+     */
     override fun `getState`(): EngineState =
         FfiConverterTypeEngineState.lift(
             callWithPointer {
@@ -1634,37 +1721,49 @@ open class FausteEngine :
         )
 
     /**
-     * Phase 2 no-op: the transport is not wired yet.
+     * `Command::Pause` for the main player (`fp-app/src/ui/player.rs:749`).
      */
+    @Throws(FausteException::class)
     override fun `pause`() =
         callWithPointer {
-            uniffiRustCall { _status ->
+            uniffiRustCallWithError(FausteException) { _status ->
                 UniffiLib.INSTANCE.uniffi_fp_backends_mobile_fn_method_fausteengine_pause(it, _status)
             }
         }
 
     /**
-     * Phase 2 no-op: the transport is not wired yet.
+     * `Command::Play` for the main player (`fp-app/src/ui/player.rs:689`).
+     * From stopped it starts the player's `next` entry, which the model
+     * derives from the playlist order after `enqueue`
+     * (`fp-model/src/reducer.rs`, `refresh_next`).
      */
+    @Throws(FausteException::class)
     override fun `play`() =
         callWithPointer {
-            uniffiRustCall { _status ->
+            uniffiRustCallWithError(FausteException) { _status ->
                 UniffiLib.INSTANCE.uniffi_fp_backends_mobile_fn_method_fausteengine_play(it, _status)
             }
         }
 
     /**
-     * Phase 2 no-op: the transport is not wired yet.
+     * `Command::Seek(player, seconds)` of the current entry
+     * (`fp-app/src/ui/player.rs:864`).
      */
+    @Throws(FausteException::class)
     override fun `seek`(`position`: kotlin.Double) =
         callWithPointer {
-            uniffiRustCall { _status ->
+            uniffiRustCallWithError(FausteException) { _status ->
                 UniffiLib.INSTANCE.uniffi_fp_backends_mobile_fn_method_fausteengine_seek(it, FfiConverterDouble.lower(`position`), _status)
             }
         }
 
     /**
-     * Phase 2 no-op: the transport is not wired yet.
+     * Phase 3: backend switching. The desktop switches audio systems
+     * through the settings UI (`config.outputs.backend` via
+     * `Command::UpdateConfig`, applied as `EngineAction::ApplyAudioSystem`);
+     * there is no single "switch backend" command to call here, and the
+     * mobile settings UI that would own this is Phase 3. For now this is a
+     * documented no-op.
      */
     override fun `setBackend`(`backendId`: kotlin.String) =
         callWithPointer {
@@ -1678,11 +1777,14 @@ open class FausteEngine :
         }
 
     /**
-     * Phase 2 no-op: the transport is not wired yet.
+     * `Command::SetVolume(player, volume)` with the linear gain 0.0–1.0
+     * (`fp-app/src/ui/player.rs:502` — the desktop converts its fader with
+     * `gain_from_fader`; the FFI takes the linear value directly).
      */
+    @Throws(FausteException::class)
     override fun `setVolume`(`volume`: kotlin.Float) =
         callWithPointer {
-            uniffiRustCall { _status ->
+            uniffiRustCallWithError(FausteException) { _status ->
                 UniffiLib.INSTANCE.uniffi_fp_backends_mobile_fn_method_fausteengine_set_volume(
                     it,
                     FfiConverterFloat.lower(`volume`),
@@ -1692,11 +1794,12 @@ open class FausteEngine :
         }
 
     /**
-     * Phase 2 no-op: the transport is not wired yet.
+     * `Command::Stop` for the main player (`fp-app/src/ui/player.rs:742`).
      */
+    @Throws(FausteException::class)
     override fun `stop`() =
         callWithPointer {
-            uniffiRustCall { _status ->
+            uniffiRustCallWithError(FausteException) { _status ->
                 UniffiLib.INSTANCE.uniffi_fp_backends_mobile_fn_method_fausteengine_stop(it, _status)
             }
         }
@@ -1899,6 +2002,95 @@ public object FfiConverterTypeTrack : FfiConverterRustBuffer<Track> {
         FfiConverterDouble.write(value.`duration`, buf)
         FfiConverterUInt.write(value.`sampleRate`, buf)
         FfiConverterUShort.write(value.`channels`, buf)
+    }
+}
+
+/**
+ * The failures the FFI can report. `Busy` means the conductor's command
+ * queue was full and the command was dropped (`ConductorHandle::send`
+ * returned `false`); retrying is safe.
+ */
+sealed class FausteException : kotlin.Exception() {
+    class Busy : FausteException() {
+        override val message
+            get() = ""
+    }
+
+    class Core(
+        val v1: kotlin.String,
+    ) : FausteException() {
+        override val message
+            get() = "v1=${ v1 }"
+    }
+
+    class NotFound(
+        val v1: kotlin.String,
+    ) : FausteException() {
+        override val message
+            get() = "v1=${ v1 }"
+    }
+
+    companion object ErrorHandler : UniffiRustCallStatusErrorHandler<FausteException> {
+        override fun lift(error_buf: RustBuffer.ByValue): FausteException = FfiConverterTypeFausteError.lift(error_buf)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFausteError : FfiConverterRustBuffer<FausteException> {
+    override fun read(buf: ByteBuffer): FausteException =
+        when (buf.getInt()) {
+            1 -> FausteException.Busy()
+            2 ->
+                FausteException.Core(
+                    FfiConverterString.read(buf),
+                )
+            3 ->
+                FausteException.NotFound(
+                    FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
+        }
+
+    override fun allocationSize(value: FausteException): ULong =
+        when (value) {
+            is FausteException.Busy -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is FausteException.Core -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL +
+                    FfiConverterString.allocationSize(value.v1)
+            )
+            is FausteException.NotFound -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL +
+                    FfiConverterString.allocationSize(value.v1)
+            )
+        }
+
+    override fun write(
+        value: FausteException,
+        buf: ByteBuffer,
+    ) {
+        when (value) {
+            is FausteException.Busy -> {
+                buf.putInt(1)
+                Unit
+            }
+            is FausteException.Core -> {
+                buf.putInt(2)
+                FfiConverterString.write(value.v1, buf)
+                Unit
+            }
+            is FausteException.NotFound -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.v1, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
 }
 

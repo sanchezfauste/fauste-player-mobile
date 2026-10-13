@@ -681,6 +681,7 @@ dependencies = [
  "aaudio-sys",
  "fp-analysis",
  "fp-backends",
+ "fp-decode",
  "fp-engine",
  "fp-model",
  "fp-remote",
