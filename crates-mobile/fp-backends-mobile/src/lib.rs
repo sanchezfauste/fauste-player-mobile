@@ -2,6 +2,7 @@
 
 mod aaudio_backend;
 pub mod callback;
+pub mod player_core;
 pub mod stream_config;
 pub mod stream_params;
 
