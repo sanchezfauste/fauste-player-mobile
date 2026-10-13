@@ -47,7 +47,7 @@
 - Produces:
   - Pinned AAudio constants (header-verified): `AAUDIO_DIRECTION_OUTPUT = 0`, `AAUDIO_SHARING_MODE_EXCLUSIVE = 0`, `AAUDIO_SHARING_MODE_SHARED = 1`, `AAUDIO_PERFORMANCE_MODE_NONE = 10`, `AAUDIO_PERFORMANCE_MODE_LOW_LATENCY = 12`, `AAUDIO_USAGE_MEDIA = 1`, `AAUDIO_CONTENT_TYPE_MUSIC = 2`, `AAUDIO_CALLBACK_RESULT_CONTINUE = 0`, `AAUDIO_CALLBACK_RESULT_STOP = 1`, and `pub const AAUDIO_ERROR_DISCONNECTED: i32 = -899` (the Phase-0 deferred named constant, re-exported for `stream_config`).
   - `pub fn sharing_mode(exclusive: bool) -> i32` — `EXCLUSIVE` when true, `SHARED` otherwise.
-  - `pub fn performance_mode() -> i32` — always `LOW_LATENCY` for Phase 1 (media playback wants the small buffers).
+  - `pub fn performance_mode() -> i32` — always `LOW_LATENCY` for Phase 1 (media playback wants the small buffers). Note: `AAudioStreamBuilder_setUsage`/`setContentType` are deliberately NOT called — both are API 28+ and the values we wanted are the platform defaults (usage defaults to MEDIA; contentType is a routing hint); skipping them keeps the API-26 link floor.
   - `pub fn check_device(device: &DeviceId) -> Result<(), BackendError>` — only `DeviceId("default")` opens; anything else is `DeviceNotFound(device.clone())`.
   - `pub fn check_dsd(config: &StreamConfig) -> Result<(), BackendError>` — `None` ok; `Native`/`Dop` → `Unsupported` (see Ruling 1; each arm's message says why).
   - `pub fn buffer_attempts(requested: u32, exact: bool) -> Vec<Option<u32>>` — the buffer sizes to try on `setBufferSizeInFrames`: `[Some(requested)]` when `exact_buffer`, `[Some(requested), None]` otherwise (`None` = leave the device's own default).
@@ -95,7 +95,7 @@
 - Test: verified by Task 4's suite; this task's check is `cargo check --target aarch64-linux-android` (clean, no warnings)
 
 **Interfaces:**
-- Consumes: `stream_params` (Task 1), `callback::CallbackCore` (Task 2), `stream_config::classify_aaudio_error`, `aaudio-sys 0.1` (verified symbol surface: `AAudio_createStreamBuilder`, `AAudioStreamBuilder_setSampleRate/setChannelCount/setFormat/setBufferCapacityInFrames/setBufferSizeInFrames/setSharingMode/setPerformanceMode/setUsage/setContentType/setDataCallback/setErrorCallback/openStream/delete`, `AAudioStream_requestStart/requestStop/close/getState/getBufferSize/getBufferCapacity/getXRunCount/getFramesRead`).
+- Consumes: `stream_params` (Task 1), `callback::CallbackCore` (Task 2), `stream_config::classify_aaudio_error`, `aaudio-sys 0.1` (verified symbol surface: `AAudio_createStreamBuilder`, `AAudioStreamBuilder_setSampleRate/setChannelCount/setFormat/setBufferCapacityInFrames/setSharingMode/setPerformanceMode/setDataCallback/setErrorCallback/openStream/delete`, `AAudioStream_requestStart/requestStop/close/getState/getBufferSize/getBufferCapacity/getXRunCount`). Errata (post-execution): `setUsage`/`setContentType` were dropped (API 28+; defaults match intent), there is no builder-level `setBufferSizeInFrames` in aaudio-sys 0.1 (the size is set on the stream after open), and the data callback's `channels` arrives per `fill`, not at construction.
 - Produces (Android arms only):
   - `open_output` implementing the trait: `check_device` + `check_dsd` gates; builder setup (sample rate, channels, `AAUDIO_FORMAT_PCM_FLOAT`, sharing mode, `LOW_LATENCY`, `AAUDIO_USAGE_MEDIA`, `AAUDIO_CONTENT_TYPE_MUSIC`); data/error callbacks registered; `openStream` result mapped by a host-testable `open_error(code) -> BackendError` table (`AAUDIO_ERROR_DISCONNECTED` → `DeviceNotFound`, `AAUDIO_ERROR_ILLEGAL_ARGUMENT` → `Unsupported`, `AAUDIO_ERROR_UNAVAILABLE`/`AAUDIO_ERROR_INVALID_STATE` → `Busy`, rest → `Backend(msg)`); `setBufferSizeInFrames` walked over `buffer_attempts` (exact → refuse when the actual size differs); `requestStart`; return `Box<dyn OutputStream>`.
   - `struct AaudioStream` (implements `OutputStream`): `config()` mirrors the requested config with `buffer_frames` = actual `getBufferSize` (or requested before any callback), `sample_format()` = `F32`, `dsd()` = `None` (refused upstream). `Drop`: set the monitor stop flag, `requestStop`, join the monitor thread, then `close` (both `// SAFETY:` commented) — the monitor must be joined BEFORE `close` so it can never poll a closed stream.
@@ -178,6 +178,17 @@
 - [ ] **Step 5: Commit** — `build(mobile): phase 0 final-review deferrals (jna aar, ktlint pin, buildRust caching)`
 
 ---
+
+## Deferred to Phase 2 (from the Phase 1 final review)
+
+- CI NDK precedence: the runner's pre-exported `ANDROID_NDK_HOME` silently defeats the `ndk;27.0.12077973` pin in `android.yml` — one-line workflow env fix (or drop the pin).
+- `buildRust` cache key: add the explaining comment that neither the NDK identity nor the `../fauste-player` sources are inputs (a local `UP-TO-DATE` after a desktop pull is possible; CI is safe via fresh checkouts).
+- `usize` laundering of the `!Send` stream handle in the monitor spawn → a grep-able `SendPtr` struct with a scoped `unsafe impl Send`.
+- `requestStart` failures reuse the open-oriented `open_error` table (start-time `INVALID_STATE` surfaces as `Busy`) — split the mapping when transport error reporting matters.
+- `CallbackCore::called_frames` is production-dead (tests only; `config()` uses the open-time readback) — wire it into `OutputStream::config` or remove it when the engine's config reporting lands.
+- Exact-mode streams set capacity == requested size (zero double-buffer headroom) — consider capacity ≥ 2× size when device tuning begins.
+- Pinned-but-unused AAudio constants (`AAUDIO_DIRECTION_OUTPUT`, `AAUDIO_USAGE_MEDIA`, `AAUDIO_CONTENT_TYPE_MUSIC`, `AAUDIO_CALLBACK_RESULT_STOP`) stay for the Phase-2 runtime-symbol work; do not mistake them for drift.
+- First CI action after the repo gets a remote: trigger the emulator lane via `workflow_dispatch` and watch the first runner-backed run (the single locally-unverifiable element).
 
 ## Notes for the implementer
 
