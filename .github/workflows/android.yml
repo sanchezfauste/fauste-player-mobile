@@ -63,10 +63,19 @@ jobs:
         run: ./gradlew buildRust :fp-app-mobile-shared:test :composeApp:assembleDebug
 
       # Bindings drift check: regenerate the Kotlin bindings into a temp dir
-      # and diff against the committed files. IMPORTANT: no ktlint here — the
-      # committed bindings are generator-unformatted, so CI must regenerate
-      # under the same tooling state (raw uniffi-bindgen output) or it would
-      # fail on formatting alone. ktlint formatting is Phase 1 cleanup.
+      # and diff against the committed files. ktlint is pinned to 1.7.1 and
+      # installed BEFORE regenerating because uniffi-bindgen formats its
+      # output by shelling out to `ktlint -F`; the committed bindings are the
+      # formatted output, so CI must regenerate under the same tooling state
+      # or it would fail on formatting alone.
+      - name: Install ktlint
+        run: |
+          curl -sSL \
+            -o "$RUNNER_TEMP/ktlint" \
+            https://github.com/pinterest/ktlint/releases/download/1.7.1/ktlint
+          chmod +x "$RUNNER_TEMP/ktlint"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
       - name: Kotlin bindings drift check
         run: |
           set -euo pipefail

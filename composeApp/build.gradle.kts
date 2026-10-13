@@ -74,13 +74,40 @@ val cargoHome: String = System.getenv("CARGO_HOME")
 val androidHome: String = System.getenv("ANDROID_HOME")
     ?: "${System.getProperty("user.home")}/Android/Sdk"
 
+// Resolved at configuration time so the task is configuration-cache friendly
+// (no project/rootProject lookups inside task actions).
+val rustRoot: File = rootProject.file(".")
+val jniLibsDir: File = layout.projectDirectory.dir("src/main/jniLibs").asFile
+val stagedRustLibs = mapOf(
+    "arm64-v8a" to "aarch64-linux-android",
+    "x86_64" to "x86_64-linux-android",
+)
+val stagedSoFiles = stagedRustLibs.map { (abi, triple) ->
+    File(jniLibsDir, "$abi/libfp_backends_mobile.so")
+}
+
 val buildRust by tasks.registering(Exec::class) {
     group = "rust"
     description =
         "Builds the fp-backends-mobile cdylib for arm64-v8a and x86_64 with " +
             "cargo-ndk and stages the shared libraries under src/main/jniLibs."
 
-    workingDir(rootDir)
+    workingDir(rustRoot)
+
+    // Declared inputs/outputs so Gradle up-to-date checks skip the cargo
+    // build when nothing in the Rust workspace changed.
+    inputs.file(File(rustRoot, "Cargo.toml")).withPropertyName("workspace-manifest")
+    inputs.file(File(rustRoot, "Cargo.lock"))
+        .withPropertyName("workspace-lockfile")
+        .optional(true)
+    inputs.file(File(rustRoot, "crates-mobile/fp-backends-mobile/Cargo.toml"))
+        .withPropertyName("crate-manifest")
+    inputs.dir(File(rustRoot, "crates-mobile/fp-backends-mobile/src"))
+        .withPropertyName("crate-sources")
+    inputs.file(File(rustRoot, "crates-mobile/fp-backends-mobile/uniffi.toml"))
+        .withPropertyName("uniffi-config")
+    outputs.files(stagedSoFiles).withPropertyName("staged-libs")
+
     // cargo and cargo-ndk live in ~/.cargo/bin, which is not on the default
     // PATH of this machine. Gradle resolves the executable against the
     // daemon's PATH (not the environment set below), so the absolute path is
@@ -89,10 +116,13 @@ val buildRust by tasks.registering(Exec::class) {
     // cargo-ndk locates the NDK under the Android SDK; make the default
     // explicit for environments where the shell has not exported it.
     environment("ANDROID_HOME", androidHome)
-    environment(
-        "ANDROID_NDK_HOME",
-        System.getenv("ANDROID_NDK_HOME") ?: "$androidHome/ndk/27.0.12077973",
-    )
+    // cargo-ndk auto-detects the NDK from $ANDROID_NDK_HOME first and falls
+    // back to the newest NDK under $ANDROID_HOME/ndk. Only inject the pinned
+    // default when no NDK is already selected, so an exported
+    // ANDROID_NDK_HOME always wins.
+    if (System.getenv("ANDROID_NDK_HOME") == null) {
+        environment("ANDROID_NDK_HOME", "$androidHome/ndk/27.0.12077973")
+    }
     commandLine(
         "$cargoHome/bin/cargo", "ndk",
         "-t", "arm64-v8a",
@@ -107,12 +137,9 @@ val buildRust by tasks.registering(Exec::class) {
 
     doLast {
         // cargo-ndk writes to target-triple directories, not target/release.
-        mapOf(
-            "arm64-v8a" to "aarch64-linux-android",
-            "x86_64" to "x86_64-linux-android",
-        ).forEach { (abi, triple) ->
-            val so = rootProject.file("target/$triple/release/libfp_backends_mobile.so")
-            val abiDir = layout.projectDirectory.dir("src/main/jniLibs/$abi").asFile
+        stagedRustLibs.forEach { (abi, triple) ->
+            val so = File(rustRoot, "target/$triple/release/libfp_backends_mobile.so")
+            val abiDir = File(jniLibsDir, abi)
             abiDir.mkdirs()
             so.copyTo(abiDir.resolve(so.name), overwrite = true)
         }

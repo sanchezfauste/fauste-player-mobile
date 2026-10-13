@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Manual re-run for first-run debugging without pushing.
+  workflow_dispatch:
 
 permissions:
   contents: read
