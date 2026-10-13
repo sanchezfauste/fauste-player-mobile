@@ -84,6 +84,21 @@ impl PlayerCore {
     /// from the caller; `config_dir` and `log_dir` sit inside `data_dir`
     /// because mobile has no separate config/log locations.
     pub fn new(data_dir: PathBuf, cache_dir: PathBuf) -> std::io::Result<Arc<PlayerCore>> {
+        Self::with_overrides(data_dir, cache_dir, None, None)
+    }
+
+    /// As `new`, but `sample_rate`/`buffer_frames` (when `Some`) override the
+    /// global `outputs.sample_rate`/`outputs.buffer_frames` of the loaded
+    /// config before `EngineSettings::from_config` reads them — the FFI's
+    /// `EngineConfig` values win at boot. Phase 3's settings UI will own
+    /// these instead (via `Command::UpdateConfig`, which rebuilds the engine
+    /// settings from the new config).
+    pub fn with_overrides(
+        data_dir: PathBuf,
+        cache_dir: PathBuf,
+        sample_rate: Option<u32>,
+        buffer_frames: Option<u32>,
+    ) -> std::io::Result<Arc<PlayerCore>> {
         let paths = AppPaths {
             config_dir: data_dir.join("config"),
             log_dir: data_dir.join("logs"),
@@ -113,6 +128,12 @@ impl PlayerCore {
             state.config.remote.http.bind = "127.0.0.1".to_owned();
         }
         state.config.remote.http.port = 0;
+        if let Some(rate) = sample_rate {
+            state.config.outputs.sample_rate = rate;
+        }
+        if let Some(frames) = buffer_frames {
+            state.config.outputs.buffer_frames = frames;
+        }
         let config = state.config.clone();
 
         // The Engine appends its own NullBackend as the last resort (see
