@@ -1,0 +1,88 @@
+name: Emulator
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+# Runs the fp-backends-mobile conformance / engine-smoke suite on a real
+# Android emulator (API 34, google_apis, x86_64, headless, audio ON) by
+# invoking scripts/emulator-test.sh — the same script used locally — so the
+# CI lane and the local flow cannot drift. The script does its own guarded
+# sdkmanager installs (system image + emulator package), AVD creation, boot,
+# wait-for-boot, `cargo ndk -t x86_64 -P 26 test --no-run` + adb push +
+# adb shell run, and trap-based emulator shutdown. All of its commands were
+# proven locally (see .superpowers/sdd/2026-10-12-phase1-aaudio-backend).
+#
+# Runner assumptions (the only locally-unverifiable part):
+#  - ubuntu-latest exposes hardware KVM (true since mid-2024); the script
+#    hard-fails without /dev/kvm, so the "Enable KVM" udev step below is what
+#    the android-emulator-runner action itself documents as sufficient.
+#  - The preinstalled Android SDK lives at $ANDROID_HOME with cmdline-tools,
+#    platform-tools and a default NDK — also true on the hosted image — plus
+#    a Java (needed by sdkmanager/avdmanager); setup-java pins temurin 21 so
+#    the lane does not depend on the image's default Java moving.
+#  - cargo-ndk finds the runner's preinstalled default NDK via
+#    $ANDROID_HOME/ndk; no extra NDK is installed by this lane.
+jobs:
+  emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      # Path deps resolve ../fauste-player relative to this repo's checkout;
+      # same as the CI and Android lanes.
+      - name: Check out the desktop repo (path dependencies)
+        uses: actions/checkout@v4
+        with:
+          repository: sanchezfauste/fauste-player
+          ref: master
+          path: ../fauste-player
+
+      # sdkmanager/avdmanager (invoked by scripts/emulator-test.sh) are Java
+      # tools. Not needed for Gradle — this lane never touches Gradle.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # Installs exactly the toolchain pinned in rust-toolchain.toml (1.98.1).
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.98.1
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Prebuilt cargo-ndk via the install-action (binary install, no
+      # `cargo install` compile on every run); same source as android.yml.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
+
+      # Only x86_64 is needed for the emulator lane; aarch64 stays in
+      # android.yml.
+      - name: Android Rust target (x86_64)
+        run: rustup target add x86_64-linux-android
+
+      # KVM is present on ubuntu-latest but the udev rule is needed for the
+      # runner user to get rw access (same fix android-emulator-runner
+      # documents). The script checks [ -r /dev/kvm ] && [ -w /dev/kvm ].
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -r /dev/kvm && test -w /dev/kvm
+
+      # The whole test phase — provisioning, boot, build, push, run,
+      # trap-cleanup — lives in the repo script so this YAML cannot drift
+      # from the locally proven flow.
+      - name: Run emulator conformance suite
+        run: ./scripts/emulator-test.sh
