@@ -17,6 +17,7 @@ fp-analysis.workspace = true
 fp-backends.workspace = true
 fp-engine.workspace = true
 fp-model.workspace = true
+fp-remote.workspace = true
 fp-store.workspace = true
 rtrb.workspace = true
 thiserror.workspace = true

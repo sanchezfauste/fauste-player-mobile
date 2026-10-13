@@ -1,5 +1,5 @@
 //! The mobile player core: everything the desktop wires at startup minus the
-//! UI, MIDI, Services and remote layers.
+//! UI, MIDI and Services layers.
 //!
 //! Authority: `fp-app/src/main.rs` (`fn run`, around lines 120-160). The
 //! wiring order here mirrors it line for line:
@@ -15,6 +15,7 @@
 //! conductor.spawn(handle)               // -> ConductorHandle on its thread
 //! AnalysisCache::new(cache_dir/"analysis")
 //! Analyzer::spawn(threads, config.analysis, config.limits, Some(cache))
+//! fp_remote::spawn(bridge over the handle)  // loopback, ephemeral port
 //! ```
 //!
 //! # Drop story
@@ -27,7 +28,10 @@
 //! 1. `_analyzer` drops first. `Analyzer::drop` (fp-analysis) sets the shared
 //!    stop flag, drops the job senders (closing the queues) and joins every
 //!    worker thread.
-//! 2. `handle` drops second. When the last `Arc<ConductorHandle>` goes,
+//! 2. `remote` drops second. `RemoteHandle::drop` (fp-remote) signals the
+//!    remote thread and joins it, closing the HTTP event streams and the
+//!    listener.
+//! 3. `handle` drops last. When the last `Arc<ConductorHandle>` goes,
 //!    `ConductorHandle::drop` (fp-engine) sets the stop flag and joins the
 //!    `fp-conductor` thread.
 //!
@@ -44,7 +48,9 @@ use fp_backends::AudioBackend;
 use fp_engine::conductor::{Conductor, ConductorHandle};
 use fp_engine::engine::{Engine, EngineSettings};
 use fp_engine::worker::file_opener;
-use fp_model::Limits;
+use fp_model::{AppState, Command, Limits, TrackId};
+use fp_remote::control::{Playback, RemoteControl, WaveformData};
+use fp_remote::server::{RemoteHandle, RemoteStatus};
 use fp_store::{AppPaths, Store};
 
 use crate::AaudioBackend;
@@ -56,11 +62,15 @@ use crate::AaudioBackend;
 /// dependency until Phase 4.
 const DEFAULT_PLAYLIST_NAME: &str = "Playlist 1";
 
-/// The running player: conductor thread plus analysis pool.
+/// The running player: conductor thread, analysis pool and remote server.
 pub struct PlayerCore {
     /// Dropped first on teardown: stops and joins the analysis workers.
-    analyzer: Analyzer,
-    /// Dropped second: stops and joins the conductor thread once the last
+    _analyzer: Analyzer,
+    /// Dropped second: stops and joins the remote thread.
+    remote: RemoteHandle,
+    /// What the remote serves; the same `Arc` the remote thread holds.
+    control: Arc<MobileBridge>,
+    /// Dropped last: stops and joins the conductor thread once the last
     /// share is released.
     handle: Arc<ConductorHandle>,
 }
@@ -85,7 +95,25 @@ impl PlayerCore {
         for warning in &loaded.warnings {
             tracing::warn!(%warning, "while loading the saved state");
         }
-        let config = loaded.state.config.clone();
+        // The remote is ON here where the desktop default is off: the
+        // mobile UI is its client, so the player is useless without it. It
+        // is pinned to loopback — a phone never serves beyond itself and
+        // this phase has no token flow — with an ephemeral port, reported
+        // by `remote_status` (the desktop default 7380 could clash with a
+        // desktop player, or with a previous run that has not released it).
+        let mut state = loaded.state;
+        state.config.remote.http.enabled = true;
+        if !state
+            .config
+            .remote
+            .http
+            .bind_addr()
+            .is_some_and(|ip| ip.is_loopback())
+        {
+            state.config.remote.http.bind = "127.0.0.1".to_owned();
+        }
+        state.config.remote.http.port = 0;
+        let config = state.config.clone();
 
         // The Engine appends its own NullBackend as the last resort (see
         // `Engine::new`), so on a host without AAudio everything still works.
@@ -94,8 +122,7 @@ impl PlayerCore {
         let engine = Engine::new(backends, settings, file_opener());
         tracing::info!(backend = %engine.backend_in_use(), "audio backend in use");
 
-        let (conductor, handle) =
-            Conductor::new(loaded.state, loaded.actions, engine, Instant::now());
+        let (conductor, handle) = Conductor::new(state, loaded.actions, engine, Instant::now());
         let handle = Arc::new(conductor.spawn(handle)?);
 
         let threads = std::thread::available_parallelism()
@@ -110,7 +137,17 @@ impl PlayerCore {
             Some(cache),
         )?;
 
-        Ok(Arc::new(PlayerCore { analyzer, handle }))
+        let control = Arc::new(MobileBridge {
+            conductor: handle.clone(),
+        });
+        let remote = fp_remote::spawn(control.clone())?;
+
+        Ok(Arc::new(PlayerCore {
+            _analyzer: analyzer,
+            remote,
+            control,
+            handle,
+        }))
     }
 
     /// The conductor's command/model handle, for the layers above.
@@ -118,8 +155,60 @@ impl PlayerCore {
         &self.handle
     }
 
-    /// The analysis pool, for submitting and draining analysis work.
-    pub fn analyzer(&self) -> &Analyzer {
-        &self.analyzer
+    /// The remote-control implementation the server publishes, for tests
+    /// and for layers that call the API in-process.
+    pub fn remote_control(&self) -> Arc<dyn RemoteControl> {
+        self.control.clone()
+    }
+
+    /// What the remote servers are doing (listening, off, or the bind
+    /// error), for the settings UI.
+    pub fn remote_status(&self) -> RemoteStatus {
+        self.remote.status()
+    }
+}
+
+/// The mobile `RemoteControl`: the desktop Bridge (`fp-app/src/remote.rs`)
+/// minus its `cover`/`peaks`, which read the media and analysis caches —
+/// media cache + analysis serving is Phase 3, so both return `None` for
+/// now.
+struct MobileBridge {
+    conductor: Arc<ConductorHandle>,
+}
+
+impl RemoteControl for MobileBridge {
+    fn model(&self) -> Arc<AppState> {
+        self.conductor.model.load_full()
+    }
+
+    fn playback(&self) -> Playback {
+        let t = self.conductor.telemetry.load();
+        Playback {
+            revision: t.model_version,
+            players: t
+                .players
+                .iter()
+                .filter_map(|(id, p)| p.position_secs.map(|s| (*id, s)))
+                .collect(),
+            carts: t
+                .carts
+                .iter()
+                .map(|(id, c)| (*id, c.position_secs))
+                .collect(),
+        }
+    }
+
+    fn send(&self, command: Command) -> bool {
+        self.conductor.send(command)
+    }
+
+    fn cover(&self, _track: TrackId) -> Option<Vec<u8>> {
+        // Phase 3: serve from the media cache / analysis cache.
+        None
+    }
+
+    fn peaks(&self, _track: TrackId) -> Option<WaveformData> {
+        // Phase 3: serve from the media cache / analysis cache.
+        None
     }
 }
