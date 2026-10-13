@@ -112,6 +112,13 @@
 
 ---
 
+## Deferred to Phase 3 (from the Phase 2 final review)
+
+- `with_overrides` is not behaviorally pinned — add the one-line test (`with_overrides(44_100, …)` then assert `model.config.outputs.sample_rate == 44_100`) when the settings work touches the area, and decide the `0`-means-override footgun (the override path bypasses `Config::validate`; the FFI always passes `Some(...)` — treat `0` as no-override or document "0 is invalid" when the Kotlin record lands).
+- `RemoteConfig::validate` clamps `port` to `1024..=u16::MAX` (`fp-model/src/remote.rs:196`): any Phase-3 `Command::UpdateConfig` that round-trips through `validate` would clamp the mobile's ephemeral `port = 0` to a fixed 1024 and move the server. Wire the token/`in-process` question at the same time: loopback on Android is not per-app isolated (another app can reach `127.0.0.1:<ephemeral>`; exposure is control-only) — consider a token or an in-process bypass of the HTTP hop.
+- Doc lines owed when the areas are next touched: `FausteEngine::new`'s non-blocking exemption note (KMP should still call it off-main), and `enqueue`'s ignoring of `Track.title/artist/duration/sampleRate/channels` (the model derives titles from the file stem, as on desktop — prevent a Kotlin surprise).
+- `get_available_backends` is a static list with `available = cfg!(android)` — Phase 3's settings screen needs real enumeration before it consumes it.
+
 ## Notes for the implementer
 
 - The desktop wiring is the authority; where the desktop passes UI-layer values (i18n name, notices), the mobile uses the computed default with a citing comment.
