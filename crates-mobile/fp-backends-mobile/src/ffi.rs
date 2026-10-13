@@ -149,8 +149,8 @@ impl FausteEngine {
     /// `Command::SetVolume(player, volume)` with the linear gain 0.0–1.0
     /// (`fp-app/src/ui/player.rs:502` — the desktop converts its fader with
     /// `gain_from_fader`; the FFI takes the linear value directly).
-    pub fn set_volume(&self, volume: f32) {
-        let _sent = self.send_main(|p| Command::SetVolume(p, volume));
+    pub fn set_volume(&self, volume: f32) -> Result<(), FausteError> {
+        self.send_main(|p| Command::SetVolume(p, volume))
     }
 
     /// Phase 3: backend switching. The desktop switches audio systems

@@ -123,13 +123,13 @@ fn enqueue_play_pause_seek_stop_and_volume() {
     assert_eq!(wait_status(&engine, "stopped"), "stopped");
 
     // Volume round trip: the model stores the player volume it is told.
-    engine.set_volume(0.5);
+    engine.set_volume(0.5).expect("set_volume 0.5");
     let deadline = Instant::now() + Duration::from_secs(2);
     while (engine.get_state().volume - 0.5).abs() > f32::EPSILON {
         assert!(Instant::now() < deadline, "the volume never reached 0.5");
         std::thread::sleep(Duration::from_millis(10));
     }
-    engine.set_volume(1.0);
+    engine.set_volume(1.0).expect("set_volume 1.0");
     let deadline = Instant::now() + Duration::from_secs(2);
     while (engine.get_state().volume - 1.0).abs() > f32::EPSILON {
         assert!(
