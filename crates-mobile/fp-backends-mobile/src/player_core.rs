@@ -44,13 +44,13 @@ use std::time::Instant;
 
 use fp_analysis::analyzer::Analyzer;
 use fp_analysis::cache::AnalysisCache;
-use fp_backends::AudioBackend;
+use fp_backends::{AudioBackend, Availability};
 use fp_engine::conductor::{Conductor, ConductorHandle};
 use fp_engine::engine::{Engine, EngineSettings};
 use fp_engine::worker::file_opener;
-use fp_model::{AppState, Command, Limits, TrackId};
+use fp_model::{AppState, Command, EntryId, Limits, TrackId};
 use fp_remote::control::{Playback, RemoteControl, WaveformData};
-use fp_remote::server::{RemoteHandle, RemoteStatus};
+use fp_remote::server::{RemoteHandle, RemoteStatus, ServerStatus};
 use fp_store::{AppPaths, Store};
 
 use crate::AaudioBackend;
@@ -73,6 +73,10 @@ pub struct PlayerCore {
     /// Dropped last: stops and joins the conductor thread once the last
     /// share is released.
     handle: Arc<ConductorHandle>,
+    /// The AAudio backend share the engine holds too, kept for probing
+    /// availability at call time (`backend_availability`,
+    /// `get_available_backends`).
+    aaudio: Arc<AaudioBackend>,
 }
 
 impl PlayerCore {
@@ -138,7 +142,10 @@ impl PlayerCore {
 
         // The Engine appends its own NullBackend as the last resort (see
         // `Engine::new`), so on a host without AAudio everything still works.
-        let backends: Vec<Arc<dyn AudioBackend>> = vec![Arc::new(AaudioBackend::new())];
+        // The AAudio share is retained for availability probing
+        // (`backend_availability`).
+        let aaudio: Arc<AaudioBackend> = Arc::new(AaudioBackend::new());
+        let backends: Vec<Arc<dyn AudioBackend>> = vec![aaudio.clone()];
         let settings = EngineSettings::from_config(&config);
         let engine = Engine::new(backends, settings, file_opener());
         tracing::info!(backend = %engine.backend_in_use(), "audio backend in use");
@@ -168,6 +175,7 @@ impl PlayerCore {
             remote,
             control,
             handle,
+            aaudio,
         }))
     }
 
@@ -187,6 +195,143 @@ impl PlayerCore {
     pub fn remote_status(&self) -> RemoteStatus {
         self.remote.status()
     }
+
+    /// Switches the default output's backend exactly the way the desktop
+    /// settings picker does (`fp-app/src/ui/settings.rs:793`, through
+    /// `update`, `fp-app/src/ui/settings.rs:175-182`): one
+    /// `Command::UpdateConfig` carrying the current configuration with
+    /// only `outputs.backend` changed. `None` is the picker's "system
+    /// default" row (`fp-app/src/ui/settings.rs:770-773`). The conductor
+    /// applies it asynchronously (the reducer hands the engine an
+    /// `UpdateSettings` action, `fp-model/src/reducer.rs:1243-1245`, and
+    /// the live layer dispatches the audio-system switch when its paths
+    /// are quiet, `fp-model/src/reducer.rs:380` /
+    /// `fp-engine/src/engine.rs:901-931`); this returns after queueing,
+    /// never blocking.
+    ///
+    /// # The port guard
+    ///
+    /// This core pins the HTTP remote to an ephemeral port
+    /// (`remote.http.port = 0` in `with_overrides`), but the reducer
+    /// re-validates every `UpdateConfig` (`fp-model/src/reducer.rs:1234`),
+    /// and validation clamps the port to 1024..
+    /// (`fp-model/src/remote.rs:196`). The remote thread follows the
+    /// model's `remote.http` and rebinds whenever it changes
+    /// (`fp-remote/src/server.rs:204-213`), so a naive clone-and-send
+    /// would move the server from its ephemeral port to 1024 within one
+    /// 250 ms poll. Before sending, the payload's port is therefore
+    /// overwritten with the port the server is *actually* listening on —
+    /// a real port survives validation. Two consequences, by design:
+    ///
+    /// * The first switch after boot makes the remote rebind once — to
+    ///   the same address. The stop/restart is brief and the address
+    ///   clients hold stays valid; afterwards the model carries the real
+    ///   port and later switches do not touch the remote at all.
+    /// * While the server is not listening (still starting, or a failed
+    ///   bind), the port is left alone and the switch still goes through;
+    ///   the model then holds whatever validation made of `0`.
+    ///
+    /// A backend that is currently unavailable is still accepted, as on
+    /// the desktop when a backend is lost: the engine falls back to what
+    /// opens and keeps retrying (`choose_backend`,
+    /// `fp-engine/src/engine.rs:456-468`). The desktop's settings UI
+    /// simply never offers unavailable backends
+    /// (`fp-app/src/ui/settings.rs:783-784`); the mobile settings UI gets
+    /// that from `backend_availability`.
+    pub fn set_backend(&self, backend: Option<&str>) -> Result<(), SetBackendError> {
+        match backend {
+            Some("null") | Some("aaudio") | None => {}
+            Some(other) => return Err(SetBackendError::Unknown(other.to_owned())),
+        }
+        let handle = self.handle();
+        let current = handle.model.load().config.clone();
+        let mut config = current.clone();
+        config.outputs.backend = backend.map(str::to_owned);
+        if let ServerStatus::Listening(addr) = self.remote.status().http {
+            config.remote.http.port = addr.port();
+        }
+        // As the desktop's `update` (`fp-app/src/ui/settings.rs:178`):
+        // validate the edit before offering it. The reducer validates
+        // again on apply (`fp-model/src/reducer.rs:1234`) — the patched
+        // port is what carries the ephemeral binding through that.
+        let _ = config.validate();
+        // As the desktop, an edit that changed nothing sends nothing
+        // (`fp-app/src/ui/settings.rs:179`). The FFI is the only config
+        // writer on mobile, so the snapshot this ran on is current.
+        if config == current {
+            return Ok(());
+        }
+        if handle.send(Command::UpdateConfig(Box::new(config))) {
+            Ok(())
+        } else {
+            Err(SetBackendError::QueueFull)
+        }
+    }
+
+    /// The availability of a backend this core wired, probed NOW:
+    /// `"null"` is the engine's always-present fallback; `"aaudio"`
+    /// opens and closes a throwaway stream per call
+    /// (`src/aaudio_backend.rs`, deliberately uncached — as the desktop
+    /// engine probes when it chooses, `fp-engine/src/engine.rs:456-468`).
+    /// `None` for an id that was never wired.
+    pub fn backend_availability(&self, id: &str) -> Option<Availability> {
+        match id {
+            "null" => Some(Availability::Available),
+            "aaudio" => Some(self.aaudio.availability()),
+            _ => None,
+        }
+    }
+
+    /// The main player's playlist, each entry resolved through the
+    /// library — the queue the mobile UI lists (the FFI's `get_playlist`
+    /// maps it; the on-device smoke reads it directly).
+    pub fn playlist(&self) -> Vec<QueueEntry> {
+        let model = self.handle().model.load();
+        let Some(player) = model.players.first() else {
+            return Vec::new();
+        };
+        let Some(list) = model.playlists.get(player.playlist) else {
+            return Vec::new();
+        };
+        list.entries
+            .iter()
+            .map(|entry| {
+                let track = model.track_for_entry(entry.id);
+                QueueEntry {
+                    entry: entry.id,
+                    path: track.map_or_else(PathBuf::new, |t| t.path.clone()),
+                    title: track.map_or_else(String::new, |t| t.title.clone()),
+                    duration_secs: track.map_or(0.0, |t| t.duration_secs),
+                }
+            })
+            .collect()
+    }
+}
+
+/// Why a backend switch was refused.
+#[derive(Debug, thiserror::Error)]
+pub enum SetBackendError {
+    /// The id is not one this core wired (`"null"`, `"aaudio"`).
+    #[error("unknown backend id: {0}")]
+    Unknown(String),
+    /// The conductor's command queue was full; the command was dropped,
+    /// retrying is safe.
+    #[error("the command queue is full; the command was dropped, retry")]
+    QueueFull,
+}
+
+/// One row of the main player's playlist, as a queue UI shows it: the
+/// entry id (what the remove/move commands address) plus what the
+/// library knows about its track — the title is the file stem, as on
+/// the desktop (`fp-model/src/track.rs:340`), and the duration is 0.0
+/// until something measured the track (the analyzer, or the source
+/// once it plays).
+#[derive(Debug, Clone, PartialEq)]
+pub struct QueueEntry {
+    pub entry: EntryId,
+    pub path: PathBuf,
+    pub title: String,
+    pub duration_secs: f64,
 }
 
 /// The mobile `RemoteControl`: the desktop Bridge (`fp-app/src/remote.rs`)

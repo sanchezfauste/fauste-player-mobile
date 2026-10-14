@@ -796,10 +796,22 @@ internal interface UniffiLib : Library {
         uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
 
+    fun uniffi_fp_backends_mobile_fn_method_fausteengine_get_playlist(
+        `ptr`: Pointer,
+        uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+
     fun uniffi_fp_backends_mobile_fn_method_fausteengine_get_state(
         `ptr`: Pointer,
         uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+
+    fun uniffi_fp_backends_mobile_fn_method_fausteengine_move_entry(
+        `ptr`: Pointer,
+        `entryId`: Long,
+        `toIndex`: Int,
+        uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
 
     fun uniffi_fp_backends_mobile_fn_method_fausteengine_pause(
         `ptr`: Pointer,
@@ -808,6 +820,22 @@ internal interface UniffiLib : Library {
 
     fun uniffi_fp_backends_mobile_fn_method_fausteengine_play(
         `ptr`: Pointer,
+        uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+
+    fun uniffi_fp_backends_mobile_fn_method_fausteengine_previous(
+        `ptr`: Pointer,
+        uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+
+    fun uniffi_fp_backends_mobile_fn_method_fausteengine_remote_status(
+        `ptr`: Pointer,
+        uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+
+    fun uniffi_fp_backends_mobile_fn_method_fausteengine_remove_entry(
+        `ptr`: Pointer,
+        `entryId`: Long,
         uniffi_out_err: UniffiRustCallStatus,
     ): Unit
 
@@ -1054,11 +1082,21 @@ internal interface UniffiLib : Library {
 
     fun uniffi_fp_backends_mobile_checksum_method_fausteengine_get_available_backends(): Short
 
+    fun uniffi_fp_backends_mobile_checksum_method_fausteengine_get_playlist(): Short
+
     fun uniffi_fp_backends_mobile_checksum_method_fausteengine_get_state(): Short
+
+    fun uniffi_fp_backends_mobile_checksum_method_fausteengine_move_entry(): Short
 
     fun uniffi_fp_backends_mobile_checksum_method_fausteengine_pause(): Short
 
     fun uniffi_fp_backends_mobile_checksum_method_fausteengine_play(): Short
+
+    fun uniffi_fp_backends_mobile_checksum_method_fausteengine_previous(): Short
+
+    fun uniffi_fp_backends_mobile_checksum_method_fausteengine_remote_status(): Short
+
+    fun uniffi_fp_backends_mobile_checksum_method_fausteengine_remove_entry(): Short
 
     fun uniffi_fp_backends_mobile_checksum_method_fausteengine_seek(): Short
 
@@ -1085,13 +1123,19 @@ private fun uniffiCheckContractApiVersion(lib: UniffiLib) {
 
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: UniffiLib) {
-    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_enqueue() != 53435.toShort()) {
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_enqueue() != 64502.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_get_available_backends() != 38127.toShort()) {
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_get_available_backends() != 15686.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_get_playlist() != 24486.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_get_state() != 61465.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_move_entry() != 40170.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_pause() != 21832.toShort()) {
@@ -1100,10 +1144,19 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_play() != 59136.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_previous() != 37677.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_remote_status() != 14741.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_remove_entry() != 20412.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_seek() != 51291.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_set_backend() != 2890.toShort()) {
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_set_backend() != 44262.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_set_volume() != 13018.toShort()) {
@@ -1112,7 +1165,7 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_stop() != 63300.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_fp_backends_mobile_checksum_constructor_fausteengine_new() != 43904.toShort()) {
+    if (lib.uniffi_fp_backends_mobile_checksum_constructor_fausteengine_new() != 55297.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -1200,6 +1253,26 @@ public object FfiConverterUInt : FfiConverter<UInt, Int> {
         buf: ByteBuffer,
     ) {
         buf.putInt(value.toInt())
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterULong : FfiConverter<ULong, Long> {
+    override fun lift(value: Long): ULong = value.toULong()
+
+    override fun read(buf: ByteBuffer): ULong = lift(buf.getLong())
+
+    override fun lower(value: ULong): Long = value.toLong()
+
+    override fun allocationSize(value: ULong) = 8UL
+
+    override fun write(
+        value: ULong,
+        buf: ByteBuffer,
+    ) {
+        buf.putLong(value.toLong())
     }
 }
 
@@ -1507,10 +1580,39 @@ public interface FausteEngineInterface {
      * "add files to a playlist" (`fp-app/src/ui/app.rs:623`). A missing or
      * unreadable file is not rejected here: the model marks its file state
      * when the source fails, as on the desktop.
+     *
+     * Every metadata field of `track` except `path` is ignored: the
+     * model derives the title from the file stem
+     * (`fp-model/src/track.rs:340`) and every other fact from the file
+     * itself, as on the desktop when files are dropped onto a playlist.
+     *
+     * The insert index is `usize::MAX`: the reducer clamps it to the
+     * playlist length at apply time (`fp-model/src/playlist.rs`,
+     * `insert`), which is what makes "append" race-free — reading the
+     * length here instead would race the conductor's own applies, and
+     * two quick enqueues would land in reverse order.
      */
     fun `enqueue`(`track`: Track)
 
+    /**
+     * The wired backends, with availability probed at call time
+     * (`PlayerCore::backend_availability`): `"null"` is the engine's
+     * always-present fallback; `"aaudio"` opens and closes a throwaway
+     * AAudio stream per call (`src/aaudio_backend.rs`), like the
+     * desktop engine probes when it chooses a backend
+     * (`fp-engine/src/engine.rs:456-468`). Ids and names match what
+     * `set_backend` accepts.
+     */
     fun `getAvailableBackends`(): List<BackendInfo>
+
+    /**
+     * The main player's queue (`PlayerCore::playlist`), one row per
+     * entry: the id the remove/move commands address, the track's path,
+     * its file-stem title and its duration while known. The list
+     * follows the model: it reflects enqueues, removals and moves once
+     * the conductor has applied them.
+     */
+    fun `getPlaylist`(): List<PlaylistEntry>
 
     /**
      * The snapshot the mobile UI draws: status from the main player's
@@ -1523,6 +1625,21 @@ public interface FausteEngineInterface {
      * matching the engine's last-resort fallback).
      */
     fun `getState`(): EngineState
+
+    /**
+     * `Command::MoveEntry { entry, to, index }` — the desktop's
+     * drag-reorder (`fp-app/src/ui/table.rs:718-722`); `to` is the main
+     * player's playlist, the only one this surface shows. The target
+     * index is clamped to the playlist length, exactly like the remote
+     * API (`fp-remote/src/api.rs:377-381`). The model compensates a
+     * backward same-list move for the removal
+     * (`fp-model/src/playlist.rs`, `move_entry`), so `to_index` is the
+     * position the entry lands at.
+     */
+    fun `moveEntry`(
+        `entryId`: kotlin.ULong,
+        `toIndex`: kotlin.UInt,
+    )
 
     /**
      * `Command::Pause` for the main player (`fp-app/src/ui/player.rs:749`).
@@ -1538,18 +1655,60 @@ public interface FausteEngineInterface {
     fun `play`()
 
     /**
+     * `Command::Previous(player)` for the main player — the desktop
+     * transport grid's Previous button
+     * (`fp-app/src/ui/player.rs:743-749`): it crossfades back to the
+     * last entry the player left (R24, `fp-model/src/reducer.rs:563`)
+     * and is a model no-op unless the player is playing. There is no
+     * `Next` command to expose — advancing is the engine's own
+     * transition (`StartNextAt`); jumping ahead in the queue is
+     * `Command::SetNext(player, entry)`
+     * (`fp-app/src/ui/table.rs:898-908`, `fp-remote/src/api.rs:156-160`),
+     * which Task 3's QueueManager composes over `get_playlist` + `play`.
+     */
+    fun `previous`()
+
+    /**
+     * What the HTTP remote is doing (`PlayerCore::remote_status`):
+     * the record the settings/status UI draws — see `RemoteInfo`.
+     */
+    fun `remoteStatus`(): RemoteInfo
+
+    /**
+     * `Command::RemoveEntry(entry)` — the desktop's context-menu remove
+     * (`fp-app/src/ui/table.rs:993`, which refuses it while the entry
+     * is on air; the model enforces its own rules on apply). A missing
+     * entry is refused up front, exactly like the remote API does
+     * (`fp-remote/src/api.rs:367-370`).
+     */
+    fun `removeEntry`(`entryId`: kotlin.ULong)
+
+    /**
      * `Command::Seek(player, seconds)` of the current entry
      * (`fp-app/src/ui/player.rs:864`).
      */
     fun `seek`(`position`: kotlin.Double)
 
     /**
-     * Phase 3: backend switching. The desktop switches audio systems
-     * through the settings UI (`config.outputs.backend` via
-     * `Command::UpdateConfig`, applied as `EngineAction::ApplyAudioSystem`);
-     * there is no single "switch backend" command to call here, and the
-     * mobile settings UI that would own this is Phase 3. For now this is a
-     * documented no-op.
+     * Phase 3: backend selection, the desktop settings picker's exact
+     * path — `Command::UpdateConfig` carrying the current configuration
+     * with only `outputs.backend` changed
+     * (`fp-app/src/ui/settings.rs:793`, via `update`,
+     * `fp-app/src/ui/settings.rs:175-182`). Returns after queueing the
+     * command, never blocking; the engine applies the switch when its
+     * paths are quiet (L11, `fp-engine/src/engine.rs:901-931`) — watch
+     * `get_state().backend` for what is in use.
+     *
+     * The switch must not disturb the remote server: see
+     * `PlayerCore::set_backend` for the port guard that keeps the
+     * ephemeral binding through the config round-trip.
+     *
+     * Known ids are `"null"` and `"aaudio"`; anything else is
+     * `NotFound`. A known backend that is currently unavailable is
+     * still accepted — the engine falls back to what opens and keeps
+     * retrying (`fp-engine/src/engine.rs:456-468`), as on the desktop
+     * when a backend is lost; the settings UI simply offers only the
+     * available ones (`get_available_backends`).
      */
     fun `setBackend`(`backendId`: kotlin.String)
 
@@ -1598,6 +1757,11 @@ open class FausteEngine :
      * `sample_rate`/`buffer_frames` fields of `config` override the loaded
      * configuration at boot (`PlayerCore::with_overrides`); Phase 3's
      * settings UI will own them afterwards.
+     *
+     * Non-blocking-exempt: construction loads the store, spawns the
+     * conductor thread, the analysis pool and the remote server —
+     * callers must invoke it off the main thread, or the UI pays for a
+     * disk-bound boot (and Android flags it).
      */
     constructor(`config`: EngineConfig) :
         this(
@@ -1679,6 +1843,17 @@ open class FausteEngine :
      * "add files to a playlist" (`fp-app/src/ui/app.rs:623`). A missing or
      * unreadable file is not rejected here: the model marks its file state
      * when the source fails, as on the desktop.
+     *
+     * Every metadata field of `track` except `path` is ignored: the
+     * model derives the title from the file stem
+     * (`fp-model/src/track.rs:340`) and every other fact from the file
+     * itself, as on the desktop when files are dropped onto a playlist.
+     *
+     * The insert index is `usize::MAX`: the reducer clamps it to the
+     * playlist length at apply time (`fp-model/src/playlist.rs`,
+     * `insert`), which is what makes "append" race-free — reading the
+     * length here instead would race the conductor's own applies, and
+     * two quick enqueues would land in reverse order.
      */
     @Throws(FausteException::class)
     override fun `enqueue`(`track`: Track) =
@@ -1692,11 +1867,36 @@ open class FausteEngine :
             }
         }
 
+    /**
+     * The wired backends, with availability probed at call time
+     * (`PlayerCore::backend_availability`): `"null"` is the engine's
+     * always-present fallback; `"aaudio"` opens and closes a throwaway
+     * AAudio stream per call (`src/aaudio_backend.rs`), like the
+     * desktop engine probes when it chooses a backend
+     * (`fp-engine/src/engine.rs:456-468`). Ids and names match what
+     * `set_backend` accepts.
+     */
     override fun `getAvailableBackends`(): List<BackendInfo> =
         FfiConverterSequenceTypeBackendInfo.lift(
             callWithPointer {
                 uniffiRustCall { _status ->
                     UniffiLib.INSTANCE.uniffi_fp_backends_mobile_fn_method_fausteengine_get_available_backends(it, _status)
+                }
+            },
+        )
+
+    /**
+     * The main player's queue (`PlayerCore::playlist`), one row per
+     * entry: the id the remove/move commands address, the track's path,
+     * its file-stem title and its duration while known. The list
+     * follows the model: it reflects enqueues, removals and moves once
+     * the conductor has applied them.
+     */
+    override fun `getPlaylist`(): List<PlaylistEntry> =
+        FfiConverterSequenceTypePlaylistEntry.lift(
+            callWithPointer {
+                uniffiRustCall { _status ->
+                    UniffiLib.INSTANCE.uniffi_fp_backends_mobile_fn_method_fausteengine_get_playlist(it, _status)
                 }
             },
         )
@@ -1719,6 +1919,31 @@ open class FausteEngine :
                 }
             },
         )
+
+    /**
+     * `Command::MoveEntry { entry, to, index }` — the desktop's
+     * drag-reorder (`fp-app/src/ui/table.rs:718-722`); `to` is the main
+     * player's playlist, the only one this surface shows. The target
+     * index is clamped to the playlist length, exactly like the remote
+     * API (`fp-remote/src/api.rs:377-381`). The model compensates a
+     * backward same-list move for the removal
+     * (`fp-model/src/playlist.rs`, `move_entry`), so `to_index` is the
+     * position the entry lands at.
+     */
+    @Throws(FausteException::class)
+    override fun `moveEntry`(
+        `entryId`: kotlin.ULong,
+        `toIndex`: kotlin.UInt,
+    ) = callWithPointer {
+        uniffiRustCallWithError(FausteException) { _status ->
+            UniffiLib.INSTANCE.uniffi_fp_backends_mobile_fn_method_fausteengine_move_entry(
+                it,
+                FfiConverterULong.lower(`entryId`),
+                FfiConverterUInt.lower(`toIndex`),
+                _status,
+            )
+        }
+    }
 
     /**
      * `Command::Pause` for the main player (`fp-app/src/ui/player.rs:749`).
@@ -1746,6 +1971,58 @@ open class FausteEngine :
         }
 
     /**
+     * `Command::Previous(player)` for the main player — the desktop
+     * transport grid's Previous button
+     * (`fp-app/src/ui/player.rs:743-749`): it crossfades back to the
+     * last entry the player left (R24, `fp-model/src/reducer.rs:563`)
+     * and is a model no-op unless the player is playing. There is no
+     * `Next` command to expose — advancing is the engine's own
+     * transition (`StartNextAt`); jumping ahead in the queue is
+     * `Command::SetNext(player, entry)`
+     * (`fp-app/src/ui/table.rs:898-908`, `fp-remote/src/api.rs:156-160`),
+     * which Task 3's QueueManager composes over `get_playlist` + `play`.
+     */
+    @Throws(FausteException::class)
+    override fun `previous`() =
+        callWithPointer {
+            uniffiRustCallWithError(FausteException) { _status ->
+                UniffiLib.INSTANCE.uniffi_fp_backends_mobile_fn_method_fausteengine_previous(it, _status)
+            }
+        }
+
+    /**
+     * What the HTTP remote is doing (`PlayerCore::remote_status`):
+     * the record the settings/status UI draws — see `RemoteInfo`.
+     */
+    override fun `remoteStatus`(): RemoteInfo =
+        FfiConverterTypeRemoteInfo.lift(
+            callWithPointer {
+                uniffiRustCall { _status ->
+                    UniffiLib.INSTANCE.uniffi_fp_backends_mobile_fn_method_fausteengine_remote_status(it, _status)
+                }
+            },
+        )
+
+    /**
+     * `Command::RemoveEntry(entry)` — the desktop's context-menu remove
+     * (`fp-app/src/ui/table.rs:993`, which refuses it while the entry
+     * is on air; the model enforces its own rules on apply). A missing
+     * entry is refused up front, exactly like the remote API does
+     * (`fp-remote/src/api.rs:367-370`).
+     */
+    @Throws(FausteException::class)
+    override fun `removeEntry`(`entryId`: kotlin.ULong) =
+        callWithPointer {
+            uniffiRustCallWithError(FausteException) { _status ->
+                UniffiLib.INSTANCE.uniffi_fp_backends_mobile_fn_method_fausteengine_remove_entry(
+                    it,
+                    FfiConverterULong.lower(`entryId`),
+                    _status,
+                )
+            }
+        }
+
+    /**
      * `Command::Seek(player, seconds)` of the current entry
      * (`fp-app/src/ui/player.rs:864`).
      */
@@ -1758,16 +2035,30 @@ open class FausteEngine :
         }
 
     /**
-     * Phase 3: backend switching. The desktop switches audio systems
-     * through the settings UI (`config.outputs.backend` via
-     * `Command::UpdateConfig`, applied as `EngineAction::ApplyAudioSystem`);
-     * there is no single "switch backend" command to call here, and the
-     * mobile settings UI that would own this is Phase 3. For now this is a
-     * documented no-op.
+     * Phase 3: backend selection, the desktop settings picker's exact
+     * path — `Command::UpdateConfig` carrying the current configuration
+     * with only `outputs.backend` changed
+     * (`fp-app/src/ui/settings.rs:793`, via `update`,
+     * `fp-app/src/ui/settings.rs:175-182`). Returns after queueing the
+     * command, never blocking; the engine applies the switch when its
+     * paths are quiet (L11, `fp-engine/src/engine.rs:901-931`) — watch
+     * `get_state().backend` for what is in use.
+     *
+     * The switch must not disturb the remote server: see
+     * `PlayerCore::set_backend` for the port guard that keeps the
+     * ephemeral binding through the config round-trip.
+     *
+     * Known ids are `"null"` and `"aaudio"`; anything else is
+     * `NotFound`. A known backend that is currently unavailable is
+     * still accepted — the engine falls back to what opens and keeps
+     * retrying (`fp-engine/src/engine.rs:456-468`), as on the desktop
+     * when a backend is lost; the settings UI simply offers only the
+     * available ones (`get_available_backends`).
      */
+    @Throws(FausteException::class)
     override fun `setBackend`(`backendId`: kotlin.String) =
         callWithPointer {
-            uniffiRustCall { _status ->
+            uniffiRustCallWithError(FausteException) { _status ->
                 UniffiLib.INSTANCE.uniffi_fp_backends_mobile_fn_method_fausteengine_set_backend(
                     it,
                     FfiConverterString.lower(`backendId`),
@@ -1954,6 +2245,94 @@ public object FfiConverterTypeEngineState : FfiConverterRustBuffer<EngineState> 
         FfiConverterOptionalTypeTrack.write(value.`currentTrack`, buf)
         FfiConverterFloat.write(value.`volume`, buf)
         FfiConverterString.write(value.`backend`, buf)
+    }
+}
+
+/**
+ * One row of the main player's queue: the entry id the remove/move
+ * commands address, the track's path, its title (the file stem, as on
+ * the desktop — `fp-model/src/track.rs:340`) and its duration in
+ * seconds — `0.0` until something measured the track.
+ */
+data class PlaylistEntry(
+    var `id`: kotlin.ULong,
+    var `path`: kotlin.String,
+    var `title`: kotlin.String,
+    var `duration`: kotlin.Double,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePlaylistEntry : FfiConverterRustBuffer<PlaylistEntry> {
+    override fun read(buf: ByteBuffer): PlaylistEntry =
+        PlaylistEntry(
+            FfiConverterULong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterDouble.read(buf),
+        )
+
+    override fun allocationSize(value: PlaylistEntry) =
+        (
+            FfiConverterULong.allocationSize(value.`id`) +
+                FfiConverterString.allocationSize(value.`path`) +
+                FfiConverterString.allocationSize(value.`title`) +
+                FfiConverterDouble.allocationSize(value.`duration`)
+        )
+
+    override fun write(
+        value: PlaylistEntry,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterULong.write(value.`id`, buf)
+        FfiConverterString.write(value.`path`, buf)
+        FfiConverterString.write(value.`title`, buf)
+        FfiConverterDouble.write(value.`duration`, buf)
+    }
+}
+
+/**
+ * What the HTTP remote (the app's own API client) is doing: `enabled`
+ * follows the server being on — listening, or retrying a failed bind —
+ * and `address` is its socket address (`"127.0.0.1:<port>"`, build the
+ * API base URL as `http://{address}`) while it listens, empty
+ * otherwise. The mobile core forces the server on at loopback with an
+ * ephemeral port (`PlayerCore::with_overrides`); the OSC half of the
+ * desktop's `RemoteStatus` is not reported because the mobile config
+ * leaves it off (`fp-model/src/remote.rs:82-90`).
+ */
+data class RemoteInfo(
+    var `enabled`: kotlin.Boolean,
+    var `address`: kotlin.String,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRemoteInfo : FfiConverterRustBuffer<RemoteInfo> {
+    override fun read(buf: ByteBuffer): RemoteInfo =
+        RemoteInfo(
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+        )
+
+    override fun allocationSize(value: RemoteInfo) =
+        (
+            FfiConverterBoolean.allocationSize(value.`enabled`) +
+                FfiConverterString.allocationSize(value.`address`)
+        )
+
+    override fun write(
+        value: RemoteInfo,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterBoolean.write(value.`enabled`, buf)
+        FfiConverterString.write(value.`address`, buf)
     }
 }
 
@@ -2150,6 +2529,34 @@ public object FfiConverterSequenceTypeBackendInfo : FfiConverterRustBuffer<List<
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeBackendInfo.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypePlaylistEntry : FfiConverterRustBuffer<List<PlaylistEntry>> {
+    override fun read(buf: ByteBuffer): List<PlaylistEntry> {
+        val len = buf.getInt()
+        return List<PlaylistEntry>(len) {
+            FfiConverterTypePlaylistEntry.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<PlaylistEntry>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypePlaylistEntry.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<PlaylistEntry>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypePlaylistEntry.write(it, buf)
         }
     }
 }

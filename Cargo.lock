@@ -650,6 +650,7 @@ version = "0.6.0"
 dependencies = [
  "crossbeam-channel",
  "fp-decode",
+ "fp-dsp",
  "fp-model",
  "image",
  "lofty",
@@ -705,6 +706,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "fp-dsp"
+version = "0.6.0"
+
+[[package]]
 name = "fp-engine"
 version = "0.6.0"
 dependencies = [
@@ -713,6 +718,7 @@ dependencies = [
  "crossbeam-channel",
  "fp-backends",
  "fp-decode",
+ "fp-dsp",
  "fp-model",
  "rtrb",
  "rubato",
