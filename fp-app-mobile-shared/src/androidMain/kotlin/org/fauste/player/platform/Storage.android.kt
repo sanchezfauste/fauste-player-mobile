@@ -16,23 +16,29 @@ actual class Storage(
 
     private fun copyToImportDir(source: Uri): String? {
         val resolver = context.contentResolver
-        val extension =
-            resolver
-                .getType(source)
-                ?.let(MimeTypeMap.getSingleton()::getExtensionFromMimeType)
-                ?: DEFAULT_EXTENSION
-        val importDir = File(context.filesDir, IMPORT_SUBDIR).apply { mkdirs() }
-        val destination = File(importDir, "${UUID.randomUUID()}.$extension")
+        // Nullable so the failure branch below can clean up a partial copy
+        // only when the destination file was actually chosen/created.
+        var destination: File? = null
+        // The guard covers the WHOLE operation (MIME lookup, mkdirs, stream
+        // copy): null-on-failure is the contract for every ordinary error.
         return runCatching {
+            val extension =
+                resolver
+                    .getType(source)
+                    ?.let(MimeTypeMap.getSingleton()::getExtensionFromMimeType)
+                    ?: DEFAULT_EXTENSION
+            val importDir = File(context.filesDir, IMPORT_SUBDIR).apply { mkdirs() }
+            val target = File(importDir, "${UUID.randomUUID()}.$extension")
+            destination = target
             resolver.openInputStream(source)?.use { input ->
-                destination.outputStream().use { output -> input.copyTo(output) }
+                target.outputStream().use { output -> input.copyTo(output) }
             } ?: return null
-            destination.absolutePath
+            target.absolutePath
         }.onFailure { failure ->
             // Cancellation is not an import failure: it must propagate.
             if (failure is CancellationException) throw failure
-            // Best-effort: drop the partial copy; never mask the original failure.
-            runCatching { destination.delete() }
+            // Best-effort: drop any partial copy; never mask the original failure.
+            runCatching { destination?.delete() }
         }.getOrNull()
     }
 
