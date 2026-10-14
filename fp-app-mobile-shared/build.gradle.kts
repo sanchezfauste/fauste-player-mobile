@@ -28,6 +28,14 @@ kotlin {
                 // libjnidispatch.so, so real FFI calls on a device need the
                 // AAR's bundled natives.
                 implementation("net.java.dev.jna:jna:${libs.versions.jna.get()}@aar")
+                // api: composeApp consumes appModule() and Koin transitively.
+                api(libs.koin.core)
+                implementation(libs.kotlinx.coroutines.core)
+            }
+        }
+        androidMain {
+            dependencies {
+                implementation(libs.koin.android)
             }
         }
         commonTest {

@@ -1,8 +1,10 @@
-package org.fauste.player
+package org.fauste.player.platform
 
 import android.content.Context
 
-actual class PlatformContext(private val context: Context) {
+actual class PlatformContext(
+    private val context: Context,
+) {
     actual val filesDir: String
         get() = context.filesDir.absolutePath
 

@@ -18,12 +18,17 @@ uniffi = "0.28.0"
 # Reserved for the Koin dependency injection wiring scheduled for Phase 4.
 # Nothing consumes these coordinates yet.
 koin = "4.0.0"
+# kotlinx-coroutines 1.10.x is the release line aligned with the Kotlin 2.2.x
+# stdlib (1.10.2 is its latest patch); it is the version JNA-less common code
+# and the DI dispatchers compile against.
+kotlinxCoroutines = "1.10.2"
 
 [libraries]
 compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 koin-core = { group = "io.insert-koin", name = "koin-core", version.ref = "koin" }
 koin-android = { group = "io.insert-koin", name = "koin-android", version.ref = "koin" }
+kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
