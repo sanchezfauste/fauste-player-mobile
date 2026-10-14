@@ -11,7 +11,9 @@ expect class Storage {
     /**
      * Copy the bytes behind a content/document [uri] into
      * `<filesDir>/import/<uuid>.<ext>` and return the absolute path, or `null`
-     * if the copy failed (unreadable URI, I/O error, unsupported type).
+     * if the copy failed (unreadable URI, I/O error, unsupported type; partial
+     * files are cleaned up). Coroutine cancellation is NOT a failure: a
+     * [kotlinx.coroutines.CancellationException] propagates to the caller.
      */
     suspend fun importToAppStorage(uri: String): String?
 }
