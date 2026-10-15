@@ -45,7 +45,11 @@ sealed interface EnqueueResult {
  * **Why mutation-driven and not polled like [PlayerController]**: the
  * queue's rows change only through explicit commands — the reducer's only
  * row mutations are `InsertPaths` / `RemoveEntry` / `MoveEntry`
- * (`fp-model/src/reducer.rs`), all of which go through this class.
+ * (`fp-model/src/reducer.rs`), all of which go through this class —
+ * EXCEPT mutations made through the loopback HTTP remote the engine
+ * boots (fp-remote's entry routes): those bypass this class and leave
+ * [playlist] stale until the next local mutation (or [refresh])
+ * re-reads the engine.
  * Auto-advance and `previous` move the CURRENT track, not the rows
  * (`StartNextAt` / R24), which [PlayerController.engineState] already
  * covers. One boot refresh seeds the flow from the engine's persisted

@@ -69,11 +69,15 @@ class PlayerController(
     private val _lastPollFailure = MutableStateFlow<Throwable?>(null)
 
     /**
-     * The last poll tick failure, or null while every tick succeeds. A
-     * destroyed engine (UniFFI raises `IllegalStateException` from
-     * `callWithPointer`) is recorded here and the loop stops — the last
-     * snapshot stays on [engineState] for the UI. This channel exists so a
-     * consumer can tell "the engine is slow" from "the engine is gone".
+     * The most recent poll failure, or null while ticks succeed — a
+     * successful tick clears it, so the channel reads as *current* poll
+     * health (what a Phase-4 error indicator wants), not an error
+     * history. The one sticky case: a destroyed engine (UniFFI raises
+     * `IllegalStateException` from `callWithPointer`) is recorded here
+     * and the loop stops — with the loop dead nothing can ever clear
+     * it, so the failure stays visible beside the last snapshot on
+     * [engineState]. This channel exists so a consumer can tell "the
+     * engine is slow" from "the engine is gone".
      */
     val lastPollFailure: StateFlow<Throwable?> = _lastPollFailure.asStateFlow()
 
@@ -82,6 +86,10 @@ class PlayerController(
             while (isActive) {
                 try {
                     _engineState.value = engine.getState()
+                    // A good read restores the channel to null — current
+                    // health, not history. StateFlow de-duplicates the
+                    // repeated null, so the happy path emits nothing.
+                    _lastPollFailure.value = null
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: IllegalStateException) {

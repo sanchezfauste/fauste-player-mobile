@@ -9,10 +9,12 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 
-actual class Storage(
+// `open` mirrors the expect contract: the sole sanctioned subclass is the
+// commonTest copy-seam double (see the expect's KDoc).
+actual open class Storage(
     private val context: Context,
 ) {
-    actual suspend fun importToAppStorage(uri: String): String? = withContext(Dispatchers.IO) { copyToImportDir(Uri.parse(uri)) }
+    actual open suspend fun importToAppStorage(uri: String): String? = withContext(Dispatchers.IO) { copyToImportDir(Uri.parse(uri)) }
 
     private fun copyToImportDir(source: Uri): String? {
         val resolver = context.contentResolver

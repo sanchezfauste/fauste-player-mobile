@@ -1,11 +1,14 @@
 package org.fauste.player.player
 
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Runnable
 import org.fauste.player.rust.EngineConfig
 import org.fauste.player.rust.FausteEngine
 import org.fauste.player.rust.Track
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.coroutines.CoroutineContext
 import kotlin.io.path.createTempDirectory
 
 /**
@@ -51,6 +54,26 @@ object RealEngineFixture {
             sampleRate = 0u,
             channels = 0u,
         )
+
+    /**
+     * Wraps [delegate] while counting dispatches — the loop-leak probe for
+     * poll-loop classes: a loop that survives its death (or its engine's)
+     * keeps re-arming its delay and dispatching again on every period.
+     */
+    class CountingDispatches(
+        private val delegate: CoroutineDispatcher,
+    ) : CoroutineDispatcher() {
+        var count: Int = 0
+            private set
+
+        override fun dispatch(
+            context: CoroutineContext,
+            block: Runnable,
+        ) {
+            count += 1
+            delegate.dispatch(context, block)
+        }
+    }
 
     /**
      * A tiny valid WAV: 44-byte RIFF header + [samples] 16-bit mono PCM
