@@ -8,6 +8,7 @@ import kotlinx.coroutines.withTimeout
 import org.fauste.player.platform.AppLifecycleHolder
 import org.fauste.player.platform.PlatformContext
 import org.fauste.player.platform.Storage
+import org.fauste.player.platform.WakeLockGuard
 import org.fauste.player.player.PlayerController
 import org.fauste.player.player.QueueManager
 import org.fauste.player.player.RealEngineFixture
@@ -66,6 +67,7 @@ class AppModuleTest {
         assertTrue(EngineConfig::class in primaryTypes)
         assertTrue(FausteEngine::class in primaryTypes)
         assertTrue(AppLifecycleHolder::class in primaryTypes)
+        assertTrue(WakeLockGuard::class in primaryTypes)
         assertEquals(2, primaryTypes.count { it == CoroutineDispatcher::class })
     }
 

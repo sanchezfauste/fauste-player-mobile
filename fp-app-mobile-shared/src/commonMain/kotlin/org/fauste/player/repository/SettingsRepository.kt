@@ -65,6 +65,13 @@ class SettingsRepository(
     val volume: Float
         get() = controller.engineState.value.volume
 
-    /** Queues a volume change (linear gain 0.0–1.0); watch [volume] for the effect. */
+    /**
+     * Queues a volume change (linear gain 0.0–1.0). The effect shows up in
+     * the engine's next poll: [volume] is a plain property over the
+     * controller's snapshot, which always reflects the last engine state —
+     * it is not observable. Consumers observe changes through the
+     * controller's `engineState` flow, which this repository does not
+     * expose; Phase 4 will surface it in the UI layer.
+     */
     suspend fun setVolume(volume: Float): CommandResult = controller.setVolume(volume)
 }
