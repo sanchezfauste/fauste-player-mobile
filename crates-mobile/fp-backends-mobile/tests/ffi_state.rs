@@ -440,13 +440,21 @@ fn remove_and_move_reshape_the_queue() {
 /// starts the armed entry, not the playlist head — the stopped-player
 /// shape the desktop conductor test pins
 /// (`fp-engine/tests/conductor.rs:773-775`).
+/// alpha lasts ~1 s while beta and gamma last ~10 s each (the same
+/// lengths the playing-path redirect test uses), so the natural chain
+/// needs ~11 s (alpha, then beta) to reach gamma — far past the 5 s
+/// budget — while the armed start puts gamma on air at once: seeing
+/// gamma inside the budget proves `Play` started the ARMED entry, and
+/// a no-op or mis-arming `set_next` times out on beta instead.
 #[test]
 fn set_next_while_stopped_arms_the_entry_a_later_play_starts() {
     let dirs = TempDirs::new("set-next-stopped");
     let engine = engine(&dirs);
-    for name in ["alpha.wav", "beta.wav", "gamma.wav"] {
-        let wav = tiny_wav_as(&dirs.data, name, 1000);
-        engine.enqueue(bare_track(wav)).expect("enqueue");
+    let alpha = tiny_wav_as(&dirs.data, "alpha.wav", 44_100); // ~1 s
+    let beta = tiny_wav_as(&dirs.data, "beta.wav", 441_000); // ~10 s
+    let gamma = tiny_wav_as(&dirs.data, "gamma.wav", 441_000); // ~10 s
+    for wav in [&alpha, &beta, &gamma] {
+        engine.enqueue(bare_track(wav.clone())).expect("enqueue");
     }
     wait_until("three entries queued", || engine.get_playlist().len() == 3);
 
@@ -465,7 +473,7 @@ fn set_next_while_stopped_arms_the_entry_a_later_play_starts() {
 
     engine.play().expect("play the armed entry");
     assert_eq!(wait_status(&engine, "playing"), "playing");
-    let deadline = Instant::now() + Duration::from_secs(2);
+    let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         let title = engine.get_state().current_track.map(|t| t.title);
         if title.as_deref() == Some("gamma") {
@@ -473,7 +481,10 @@ fn set_next_while_stopped_arms_the_entry_a_later_play_starts() {
         }
         assert!(
             Instant::now() < deadline,
-            "Play started {title:?} instead of the armed gamma"
+            "Play started {title:?} instead of the armed gamma — the \
+             natural chain (alpha ~1 s then beta ~10 s) cannot reach \
+             gamma inside the 5 s budget, so this timeout means the arm \
+             was lost or misapplied"
         );
         std::thread::sleep(Duration::from_millis(10));
     }
