@@ -1,5 +1,6 @@
 package org.fauste.player.ui.components
 
+import android.app.Application
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsActions
@@ -29,7 +30,11 @@ import kotlin.test.assertEquals
  * font resource loading (which FausteThemeTest covers).
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+// A bare Application instead of the manifest's FausteApplication: Robolectric
+// would startKoin once per test method, while Koin's static GlobalContext persists
+// across same-config methods in the reused sandbox class loader (double-start
+// crash) — and none of these suites touch Koin.
+@Config(sdk = [36], application = Application::class)
 class PlayerControlsTest {
     @get:Rule
     val composeRule = createComposeRule()

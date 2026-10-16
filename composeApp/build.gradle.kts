@@ -33,6 +33,16 @@ kotlin {
                 // The composeResources/font/ Inter files load through
                 // the CMP resources runtime (Res accessors + Font()).
                 implementation(compose.components.resources)
+                // Koin Compose (Ruling 2): the multiplatform artifacts —
+                // see libs.versions.toml's provenance note for the
+                // coordinates' verification. androidx.lifecycle.ViewModel
+                // (the base class the ViewModel below extends) reaches
+                // commonMain through koin-compose-viewmodel's own api
+                // surface (org.jetbrains.androidx.lifecycle, which on the
+                // Android target redirects to the real androidx artifacts).
+                implementation(libs.koin.compose)
+                implementation(libs.koin.compose.viewmodel)
+                implementation(libs.koin.core.viewmodel)
             }
         }
         androidMain {
@@ -44,6 +54,11 @@ kotlin {
                 // multiplatform source sets (KT-58759), and every compose
                 // artifact here already arrives transitively via Compose
                 // Multiplatform 1.9.3, so the pin stays catalog-only.
+                // startKoin { androidContext(...) } in FausteApplication
+                // (koin-android is on the runtime classpath transitively via
+                // the shared module; the compile dependency is declared here
+                // because FausteApplication imports androidContext).
+                implementation(libs.koin.android)
             }
         }
         // Compose UI tests run as Robolectric-based Android UNIT tests on
@@ -62,6 +77,10 @@ kotlin {
                 // coordinate from the version catalog.
                 implementation(libs.androidx.compose.ui.test.junit4)
                 implementation(libs.robolectric)
+                // runTest / StandardTestDispatcher: the PlayerViewModel
+                // contract suite drives the seek throttle on virtual time,
+                // exactly like the shared module's controller suite does.
+                implementation(libs.kotlinx.coroutines.test)
                 implementation(kotlin("test"))
             }
         }

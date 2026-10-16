@@ -1,5 +1,6 @@
 package org.fauste.player.ui.theme
 
+import android.app.Application
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -23,7 +24,11 @@ import kotlin.test.assertNotNull
  * Nocturne values), not by reading pixels.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+// A bare Application instead of the manifest's FausteApplication: Robolectric
+// would startKoin once per test method, while Koin's static GlobalContext persists
+// across same-config methods in the reused sandbox class loader (double-start
+// crash) — and none of these suites touch Koin.
+@Config(sdk = [36], application = Application::class)
 class FausteThemeTest {
     @get:Rule
     val composeRule = createComposeRule()

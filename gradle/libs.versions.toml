@@ -44,6 +44,22 @@ androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-te
 androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest", version.ref = "androidxComposeUiTest" }
 koin-core = { group = "io.insert-koin", name = "koin-core", version.ref = "koin" }
 koin-android = { group = "io.insert-koin", name = "koin-android", version.ref = "koin" }
+# Koin Compose (Phase 4 plan Ruling 2; all verified against Maven Central at
+# 4.0.0). The plan's hint named the group "org.jetbrains" — the actual group
+# is io.insert-koin; org.jetbrains appears only in the TRANSITIVE lifecycle
+# dependency (org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose,
+# which on the Android target redirects to the real androidx.lifecycle
+# artifacts). koin-compose carries KoinContext for the app shell;
+# koin-compose-viewmodel carries koinViewModel() for the screens; the
+# ViewModel DSL used below (org.koin.core.module.dsl.viewModel — its `get`
+# supports qualifiers) lives in koin-core-viewmodel, which
+# koin-compose-viewmodel re-exports but is declared because composeApp
+# imports that DSL directly. NOTE: koin-compose-viewmodel 4.0.0 publishes NO
+# -android variant (404 on Maven Central) — the Android target consumes the
+# jvm variant through KGP's androidJvm->jvm platform compatibility.
+koin-compose = { group = "io.insert-koin", name = "koin-compose", version.ref = "koin" }
+koin-compose-viewmodel = { group = "io.insert-koin", name = "koin-compose-viewmodel", version.ref = "koin" }
+koin-core-viewmodel = { group = "io.insert-koin", name = "koin-core-viewmodel", version.ref = "koin" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 
