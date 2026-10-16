@@ -154,9 +154,27 @@ class QueueManager(
         toIndex: UInt,
     ): CommandResult =
         mutate({ it.moveEntry(entryId, toIndex) }) { queue ->
-            val expectedIndex = minOf(toIndex.toInt(), queue.lastIndex)
+            val expectedIndex = expectedMoveIndex(toIndex, queue.lastIndex)
             queue.indexOfFirst { entry -> entry.id == entryId } == expectedIndex
         }
+
+    /**
+     * Jumps playback to the entry with [entryId] — the desktop's queue
+     * tap: the row double-click sends `SetNext` alone
+     * (ffi.rs `set_next`, `fp-app/src/ui/table.rs:616-626`), and so does
+     * this. The model arms the entry as the player's explicit next
+     * WITHOUT touching the transport: what is on air plays to its end
+     * and the engine then starts the armed entry (the "Play now"
+     * pairing — `Stop` + `Play` — is a different desktop gesture this
+     * wrapper deliberately does not compose); a stopped player stays
+     * stopped, and its next play starts the armed entry
+     * (`fp-engine/tests/conductor.rs:773-775`). The queue rows never
+     * change, so like [previous] the confirm window is a single refresh
+     * pass — watch [PlayerController.engineState] for the auto-advance
+     * to land, not [playlist]. A missing entry is refused up front by
+     * the FFI (`NotFound`) and maps to [CommandResult.Failed].
+     */
+    suspend fun jump(entryId: ULong): CommandResult = mutate({ it.setNext(entryId) }) { true }
 
     /**
      * Queues the transport grid's Previous button (ffi.rs `previous`): the
@@ -224,5 +242,20 @@ class QueueManager(
 
         /** The confirm poll period, as fine as the Rust suite's polling. */
         const val CONFIRM_PERIOD_MILLIS: Long = 20
+
+        /**
+         * The position a move to [toIndex] lands at in a queue whose
+         * last index is [lastIndex] — the FFI clamps a too-large target
+         * to the end (ffi.rs `move_entry`), so the confirm predicate
+         * expects the same. The clamp runs in the UInt domain BEFORE
+         * `toInt()`: a pathological `toIndex` above `Int.MAX_VALUE`
+         * would wrap negative after the conversion and the predicate
+         * could never hold, stalling the confirm window the full
+         * [CONFIRM_TIMEOUT_MILLIS] (the Phase-3 final-review carry).
+         */
+        internal fun expectedMoveIndex(
+            toIndex: UInt,
+            lastIndex: Int,
+        ): Int = minOf(toIndex, lastIndex.coerceAtLeast(0).toUInt()).toInt()
     }
 }

@@ -4,7 +4,8 @@
 //! constructs (store → engine → conductor → analyzer → remote server),
 //! the remote reports itself `Listening`, and an enqueue + play reaches the
 //! model (the transport leaves `Stopped`). Phase 3 adds the backend-switch
-//! round trip and the queue read (`PlayerCore::playlist`). Android-only;
+//! round trip and the queue read (`PlayerCore::playlist`). Phase 4 adds the
+//! queue jump (`Command::SetNext`, the FFI's `set_next`). Android-only;
 //! zero tests on the host.
 #![cfg(target_os = "android")]
 
@@ -13,7 +14,8 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use fp_backends_mobile::player_core::PlayerCore;
-use fp_model::Command;
+use fp_model::player::Transport;
+use fp_model::{Command, EntryId};
 use fp_remote::server::RemoteStatus;
 use fp_remote::server::ServerStatus;
 
@@ -31,12 +33,12 @@ fn temp_dirs(tag: &str) -> (PathBuf, PathBuf) {
     (data, cache)
 }
 
-/// Writes a tiny valid WAV (44-byte header, 1 s of silent 16-bit mono at
-/// 44.1 kHz). A real file matters: an unplayable path makes the model refuse
-/// the transport before it ever leaves `Stopped`.
-fn tiny_wav(dir: &std::path::Path) -> PathBuf {
-    let path = dir.join("tone.wav");
-    let data_len = (44_100 * 2) as u32;
+/// Writes a tiny valid WAV (44-byte header, `samples` silent 16-bit mono
+/// samples at 44.1 kHz). A real file matters: an unplayable path makes the
+/// model refuse the transport before it ever leaves `Stopped`.
+fn tiny_wav_as(dir: &std::path::Path, name: &str, samples: usize) -> PathBuf {
+    let path = dir.join(name);
+    let data_len = (samples * 2) as u32;
     let mut wav: Vec<u8> = Vec::with_capacity(44 + data_len as usize);
     wav.extend_from_slice(b"RIFF");
     wav.extend_from_slice(&(36 + data_len).to_le_bytes());
@@ -53,6 +55,11 @@ fn tiny_wav(dir: &std::path::Path) -> PathBuf {
     wav.extend_from_slice(&vec![0u8; data_len as usize]);
     std::fs::write(&path, &wav).expect("cannot write the test WAV");
     path
+}
+
+/// The original one: `tone.wav`, 1 s.
+fn tiny_wav(dir: &std::path::Path) -> PathBuf {
+    tiny_wav_as(dir, "tone.wav", 44_100)
 }
 
 /// Polls until the core's HTTP remote is listening (bounded at 5 s).
@@ -105,7 +112,7 @@ fn the_full_core_serves_the_remote_and_plays() {
         .players
         .first()
         .map(|p| p.transport)
-        == Some(fp_model::player::Transport::Stopped)
+        == Some(Transport::Stopped)
     {
         assert!(Instant::now() < deadline, "the player never left Stopped");
         std::thread::sleep(Duration::from_millis(10));
@@ -224,7 +231,7 @@ fn the_queue_read_lists_the_enqueued_track_on_device() {
         .players
         .first()
         .map(|p| p.transport)
-        == Some(fp_model::player::Transport::Stopped)
+        == Some(Transport::Stopped)
     {
         assert!(Instant::now() < deadline, "the player never left Stopped");
         std::thread::sleep(Duration::from_millis(10));
@@ -234,5 +241,113 @@ fn the_queue_read_lists_the_enqueued_track_on_device() {
         ServerStatus::Listening(listening),
         "playing must not move the remote server"
     );
+    drop(core);
+}
+
+/// Phase 4, on-device: the queue jump — `Command::SetNext(player, entry)`,
+/// the FFI's `set_next`, the desktop's row double-click
+/// (`fp-app/src/ui/table.rs:616-626`): the command is sent ALONE, the
+/// model arms the target as the main player's explicit next
+/// (`fp-model/src/reducer.rs:676-687`) without touching the transport,
+/// and the auto-advance then crosses into the ARMED entry, not the
+/// natural successor. alpha lasts ~1 s while beta and gamma last ~10 s
+/// each, so the natural order cannot reach gamma inside the budget —
+/// the boundary crossing proves the arm.
+#[test]
+fn the_queue_jump_arms_and_redirects_the_advance_on_device() {
+    let (data, cache) = temp_dirs("jump");
+    let core = PlayerCore::new(data.clone(), cache).expect("core construction on-device");
+    let core_data = data;
+
+    let (player, playlist) = {
+        let model = core.handle().model.load();
+        let player = model.players.first().expect("no players in the state");
+        (player.id, player.playlist)
+    };
+    for (name, samples) in [
+        ("alpha.wav", 44_100),
+        ("beta.wav", 441_000),
+        ("gamma.wav", 441_000),
+    ] {
+        let wav = tiny_wav_as(&core_data, name, samples);
+        assert!(core.handle().send(Command::InsertPaths {
+            playlist,
+            index: usize::MAX, // the reducer clamps: append
+            paths: vec![wav],
+        }));
+    }
+    let entries: Vec<EntryId> = {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let model = core.handle().model.load();
+            let ids: Vec<EntryId> = model
+                .playlists
+                .get(playlist)
+                .map(|list| list.entries.iter().map(|e| e.id).collect())
+                .unwrap_or_default();
+            if ids.len() == 3 {
+                break ids;
+            }
+            assert!(Instant::now() < deadline, "the queue never filled");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    };
+
+    assert!(core.handle().send(Command::Play(player)));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while core
+        .handle()
+        .model
+        .load()
+        .players
+        .first()
+        .map(|p| p.transport)
+        == Some(Transport::Stopped)
+    {
+        assert!(Instant::now() < deadline, "the player never left Stopped");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    // The jump: SetNext alone. The arm lands in the model — next AND the
+    // explicit flag, which no natural advance sets — while the transport
+    // keeps playing.
+    assert!(core.handle().send(Command::SetNext(player, entries[2])));
+    let transport = {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let model = core.handle().model.load();
+            let p = model.players.first().expect("the main player");
+            if p.next == Some(entries[2]) && p.next_explicit {
+                break p.transport;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the arm never landed in the model (next: {:?})",
+                p.next
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    };
+    assert_eq!(
+        transport,
+        Transport::Playing,
+        "SetNext never touches the transport"
+    );
+
+    // The boundary: the advance must cross into gamma, not beta.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let model = core.handle().model.load();
+        let current = model.players.first().expect("the main player").current;
+        if current == Some(entries[2]) {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the advance never crossed into the armed entry (current: {current:?})"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
     drop(core);
 }

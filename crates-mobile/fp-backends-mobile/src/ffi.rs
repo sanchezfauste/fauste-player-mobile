@@ -1,5 +1,5 @@
 //! UniFFI surface for the mobile app: `FausteEngine`, a thin object over
-//! `Arc<PlayerCore>` (Phase 2; grown in Phase 3).
+//! `Arc<PlayerCore>` (Phase 2; grown through Phase 4).
 //!
 //! Commands reach the conductor as the desktop UI sends them
 //! (`fp-app/src/ui/player.rs`, `fp-app/src/ui/table.rs`): `Command::Play` /
@@ -7,11 +7,12 @@
 //! player's id, enqueue is `Command::InsertPaths` appended at the end of the
 //! main player's playlist (`fp-app/src/ui/app.rs:623`), the queue edits are
 //! `Command::RemoveEntry` / `Command::MoveEntry`
-//! (`fp-app/src/ui/table.rs:718-722`, `fp-app/src/ui/table.rs:993`), and the
-//! backend selection rides `Command::UpdateConfig` exactly as the desktop
-//! settings picker sends it (`fp-app/src/ui/settings.rs:793`). State reads
-//! mirror the desktop Bridge (`fp-app/src/remote.rs:84-130`): the model
-//! snapshot and the telemetry, never a blocking call.
+//! (`fp-app/src/ui/table.rs:718-722`, `fp-app/src/ui/table.rs:993`), the
+//! queue jump is `Command::SetNext` (`fp-app/src/ui/table.rs:616-626`), and
+//! the backend selection rides `Command::UpdateConfig` exactly as the
+//! desktop settings picker sends it (`fp-app/src/ui/settings.rs:793`).
+//! State reads mirror the desktop Bridge (`fp-app/src/remote.rs:84-130`):
+//! the model snapshot and the telemetry, never a blocking call.
 //!
 //! Status strings mirror the remote DTO (`fp-remote/src/dto.rs:361-363`):
 //! `"playing"` / `"paused"` / `"stopped"`.
@@ -335,18 +336,43 @@ impl FausteEngine {
         }
     }
 
+    /// `Command::SetNext(player, entry)` — the desktop's queue tap. A row
+    /// double-click sends exactly this command, ALONE
+    /// (`fp-app/src/ui/table.rs:616-626`); only the context menu's "Play
+    /// now" pairs it with transport commands (`Stop` while paused +
+    /// `SetNext` + `Play`, `fp-app/src/ui/table.rs:889-895`) — a
+    /// different gesture this surface deliberately does not compose.
+    ///
+    /// The model arms the entry as the main player's explicit next and
+    /// clears any pending start (`fp-model/src/reducer.rs:676-687`);
+    /// the transport is never touched: what is on air plays to its end
+    /// and the conductor starts the armed entry at the boundary (the
+    /// engine's own `StartNextAt` transition), a stopped player stays
+    /// stopped — a later `play` starts the armed entry
+    /// (`fp-engine/tests/conductor.rs:773-775`) — and setting the
+    /// on-air entry makes it play once more (rule 27a,
+    /// `fp-engine/tests/conductor.rs:707`). A missing entry is refused
+    /// up front, the same pre-check as `remove_entry` (and the remote
+    /// API's plan, `fp-remote/src/api.rs:156-160`).
+    pub fn set_next(&self, entry_id: u64) -> Result<(), FausteError> {
+        let handle = self.core.handle();
+        let entry = EntryId(entry_id);
+        if handle.model.load().playlists.entry(entry).is_none() {
+            return Err(FausteError::NotFound(format!("no entry {entry_id}")));
+        }
+        self.send_main(|p| Command::SetNext(p, entry))
+    }
+
     /// `Command::Previous(player)` for the main player — the desktop
     /// transport grid's Previous button
     /// (`fp-app/src/ui/player.rs:743-749`): it crossfades back to the
     /// last entry the player left (R24, `fp-model/src/reducer.rs:563`)
     /// and is a model no-op unless the player is playing. There is no
     /// `Next` command to expose — advancing is the engine's own
-    /// transition (`StartNextAt`); queue-jump-ahead is
-    /// `Command::SetNext(player, entry)`
-    /// (`fp-app/src/ui/table.rs:898-908`, `fp-remote/src/api.rs:156-160`),
-    /// but reaching it from Kotlin would require an FFI `set_next`
-    /// surface over that command — NOT exposed in Phase 3 (a Phase 4
-    /// item), so the mobile side cannot target `SetNext` at all.
+    /// transition (`StartNextAt`); queue-jump-ahead is `set_next`
+    /// — `Command::SetNext(player, entry)`, the desktop row
+    /// activation's exact command
+    /// (`fp-app/src/ui/table.rs:616-626`, `fp-remote/src/api.rs:156-160`).
     pub fn previous(&self) -> Result<(), FausteError> {
         self.send_main(Command::Previous)
     }

@@ -851,6 +851,12 @@ internal interface UniffiLib : Library {
         uniffi_out_err: UniffiRustCallStatus,
     ): Unit
 
+    fun uniffi_fp_backends_mobile_fn_method_fausteengine_set_next(
+        `ptr`: Pointer,
+        `entryId`: Long,
+        uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+
     fun uniffi_fp_backends_mobile_fn_method_fausteengine_set_volume(
         `ptr`: Pointer,
         `volume`: Float,
@@ -1102,6 +1108,8 @@ internal interface UniffiLib : Library {
 
     fun uniffi_fp_backends_mobile_checksum_method_fausteengine_set_backend(): Short
 
+    fun uniffi_fp_backends_mobile_checksum_method_fausteengine_set_next(): Short
+
     fun uniffi_fp_backends_mobile_checksum_method_fausteengine_set_volume(): Short
 
     fun uniffi_fp_backends_mobile_checksum_method_fausteengine_stop(): Short
@@ -1144,7 +1152,7 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_play() != 59136.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_previous() != 53168.toShort()) {
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_previous() != 60891.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_remote_status() != 14741.toShort()) {
@@ -1157,6 +1165,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_set_backend() != 44262.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_set_next() != 60105.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_set_volume() != 13018.toShort()) {
@@ -1661,12 +1672,10 @@ public interface FausteEngineInterface {
      * last entry the player left (R24, `fp-model/src/reducer.rs:563`)
      * and is a model no-op unless the player is playing. There is no
      * `Next` command to expose — advancing is the engine's own
-     * transition (`StartNextAt`); queue-jump-ahead is
-     * `Command::SetNext(player, entry)`
-     * (`fp-app/src/ui/table.rs:898-908`, `fp-remote/src/api.rs:156-160`),
-     * but reaching it from Kotlin would require an FFI `set_next`
-     * surface over that command — NOT exposed in Phase 3 (a Phase 4
-     * item), so the mobile side cannot target `SetNext` at all.
+     * transition (`StartNextAt`); queue-jump-ahead is `set_next`
+     * — `Command::SetNext(player, entry)`, the desktop row
+     * activation's exact command
+     * (`fp-app/src/ui/table.rs:616-626`, `fp-remote/src/api.rs:156-160`).
      */
     fun `previous`()
 
@@ -1713,6 +1722,28 @@ public interface FausteEngineInterface {
      * available ones (`get_available_backends`).
      */
     fun `setBackend`(`backendId`: kotlin.String)
+
+    /**
+     * `Command::SetNext(player, entry)` — the desktop's queue tap. A row
+     * double-click sends exactly this command, ALONE
+     * (`fp-app/src/ui/table.rs:616-626`); only the context menu's "Play
+     * now" pairs it with transport commands (`Stop` while paused +
+     * `SetNext` + `Play`, `fp-app/src/ui/table.rs:889-895`) — a
+     * different gesture this surface deliberately does not compose.
+     *
+     * The model arms the entry as the main player's explicit next and
+     * clears any pending start (`fp-model/src/reducer.rs:676-687`);
+     * the transport is never touched: what is on air plays to its end
+     * and the conductor starts the armed entry at the boundary (the
+     * engine's own `StartNextAt` transition), a stopped player stays
+     * stopped — a later `play` starts the armed entry
+     * (`fp-engine/tests/conductor.rs:773-775`) — and setting the
+     * on-air entry makes it play once more (rule 27a,
+     * `fp-engine/tests/conductor.rs:707`). A missing entry is refused
+     * up front, the same pre-check as `remove_entry` (and the remote
+     * API's plan, `fp-remote/src/api.rs:156-160`).
+     */
+    fun `setNext`(`entryId`: kotlin.ULong)
 
     /**
      * `Command::SetVolume(player, volume)` with the linear gain 0.0–1.0
@@ -1979,12 +2010,10 @@ open class FausteEngine :
      * last entry the player left (R24, `fp-model/src/reducer.rs:563`)
      * and is a model no-op unless the player is playing. There is no
      * `Next` command to expose — advancing is the engine's own
-     * transition (`StartNextAt`); queue-jump-ahead is
-     * `Command::SetNext(player, entry)`
-     * (`fp-app/src/ui/table.rs:898-908`, `fp-remote/src/api.rs:156-160`),
-     * but reaching it from Kotlin would require an FFI `set_next`
-     * surface over that command — NOT exposed in Phase 3 (a Phase 4
-     * item), so the mobile side cannot target `SetNext` at all.
+     * transition (`StartNextAt`); queue-jump-ahead is `set_next`
+     * — `Command::SetNext(player, entry)`, the desktop row
+     * activation's exact command
+     * (`fp-app/src/ui/table.rs:616-626`, `fp-remote/src/api.rs:156-160`).
      */
     @Throws(FausteException::class)
     override fun `previous`() =
@@ -2066,6 +2095,38 @@ open class FausteEngine :
                 UniffiLib.INSTANCE.uniffi_fp_backends_mobile_fn_method_fausteengine_set_backend(
                     it,
                     FfiConverterString.lower(`backendId`),
+                    _status,
+                )
+            }
+        }
+
+    /**
+     * `Command::SetNext(player, entry)` — the desktop's queue tap. A row
+     * double-click sends exactly this command, ALONE
+     * (`fp-app/src/ui/table.rs:616-626`); only the context menu's "Play
+     * now" pairs it with transport commands (`Stop` while paused +
+     * `SetNext` + `Play`, `fp-app/src/ui/table.rs:889-895`) — a
+     * different gesture this surface deliberately does not compose.
+     *
+     * The model arms the entry as the main player's explicit next and
+     * clears any pending start (`fp-model/src/reducer.rs:676-687`);
+     * the transport is never touched: what is on air plays to its end
+     * and the conductor starts the armed entry at the boundary (the
+     * engine's own `StartNextAt` transition), a stopped player stays
+     * stopped — a later `play` starts the armed entry
+     * (`fp-engine/tests/conductor.rs:773-775`) — and setting the
+     * on-air entry makes it play once more (rule 27a,
+     * `fp-engine/tests/conductor.rs:707`). A missing entry is refused
+     * up front, the same pre-check as `remove_entry` (and the remote
+     * API's plan, `fp-remote/src/api.rs:156-160`).
+     */
+    @Throws(FausteException::class)
+    override fun `setNext`(`entryId`: kotlin.ULong) =
+        callWithPointer {
+            uniffiRustCallWithError(FausteException) { _status ->
+                UniffiLib.INSTANCE.uniffi_fp_backends_mobile_fn_method_fausteengine_set_next(
+                    it,
+                    FfiConverterULong.lower(`entryId`),
                     _status,
                 )
             }

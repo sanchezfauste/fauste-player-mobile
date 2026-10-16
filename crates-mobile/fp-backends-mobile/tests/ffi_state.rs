@@ -430,6 +430,120 @@ fn remove_and_move_reshape_the_queue() {
     });
 }
 
+/// `set_next` while STOPPED: the desktop's queue tap sends
+/// `Command::SetNext` ALONE — the row double-click
+/// (`fp-app/src/ui/table.rs:616-626`); only the context menu's "Play
+/// now" pairs it (`Stop` while paused + `SetNext` + `Play`,
+/// `fp-app/src/ui/table.rs:889-895`), a different gesture the FFI does
+/// not compose. So the transport must stay untouched and only the arm
+/// happen (`fp-model/src/reducer.rs:676-687`); a later `Play` then
+/// starts the armed entry, not the playlist head — the stopped-player
+/// shape the desktop conductor test pins
+/// (`fp-engine/tests/conductor.rs:773-775`).
+#[test]
+fn set_next_while_stopped_arms_the_entry_a_later_play_starts() {
+    let dirs = TempDirs::new("set-next-stopped");
+    let engine = engine(&dirs);
+    for name in ["alpha.wav", "beta.wav", "gamma.wav"] {
+        let wav = tiny_wav_as(&dirs.data, name, 1000);
+        engine.enqueue(bare_track(wav)).expect("enqueue");
+    }
+    wait_until("three entries queued", || engine.get_playlist().len() == 3);
+
+    let gamma_id = engine
+        .get_playlist()
+        .iter()
+        .find(|row| row.path.ends_with("gamma.wav"))
+        .expect("gamma is queued")
+        .id;
+    engine.set_next(gamma_id).expect("set_next while stopped");
+    assert_eq!(
+        engine.get_state().status,
+        "stopped",
+        "SetNext never starts the transport by itself"
+    );
+
+    engine.play().expect("play the armed entry");
+    assert_eq!(wait_status(&engine, "playing"), "playing");
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        let title = engine.get_state().current_track.map(|t| t.title);
+        if title.as_deref() == Some("gamma") {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "Play started {title:?} instead of the armed gamma"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    drop(engine);
+}
+
+/// `set_next` while PLAYING: what is on air plays to its end and the
+/// conductor then starts the ARMED entry, not the natural successor.
+/// alpha lasts ~1 s while beta and gamma last ~10 s each, so the
+/// natural order could not reach gamma inside the 5 s budget — seeing
+/// gamma at all proves the jump redirected the auto-advance. A missing
+/// entry is refused up front, the same pre-check as `remove_entry`
+/// (and the remote API's plan, `fp-remote/src/api.rs:156-160`).
+#[test]
+fn set_next_redirects_the_auto_advance_to_the_armed_entry() {
+    let dirs = TempDirs::new("set-next-playing");
+    let engine = engine(&dirs);
+    let alpha = tiny_wav_as(&dirs.data, "alpha.wav", 44_100); // ~1 s
+    let beta = tiny_wav_as(&dirs.data, "beta.wav", 441_000); // ~10 s
+    let gamma = tiny_wav_as(&dirs.data, "gamma.wav", 441_000); // ~10 s
+    for wav in [&alpha, &beta, &gamma] {
+        engine.enqueue(bare_track(wav.clone())).expect("enqueue");
+    }
+    wait_until("three entries queued", || engine.get_playlist().len() == 3);
+
+    assert!(
+        matches!(engine.set_next(999_999), Err(FausteError::NotFound(_))),
+        "a missing entry is refused up front"
+    );
+
+    let gamma_id = engine
+        .get_playlist()
+        .iter()
+        .find(|row| row.path.ends_with("gamma.wav"))
+        .expect("gamma is queued")
+        .id;
+    engine.play().expect("play");
+    assert_eq!(wait_status(&engine, "playing"), "playing");
+    let title = engine.get_state().current_track.map(|t| t.title);
+    assert_eq!(title.as_deref(), Some("alpha"), "the queue head starts");
+
+    engine.set_next(gamma_id).expect("set_next while playing");
+    assert_eq!(
+        engine.get_state().status,
+        "playing",
+        "SetNext never touches the transport: alpha keeps playing"
+    );
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let title = engine.get_state().current_track.map(|t| t.title);
+        if title.as_deref() == Some("gamma") {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the auto-advance never reached the armed gamma (last: {title:?})"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(
+        engine.get_playlist().len(),
+        3,
+        "the jump never reorders or drops queue rows"
+    );
+
+    drop(engine);
+}
+
 /// `previous`: the desktop transport grid's Previous button
 /// (`fp-app/src/ui/player.rs:743-749`). The command queues; the model
 /// applies its own rules (a no-op unless playing, `fp-model/src/reducer.rs:574`).
