@@ -107,6 +107,23 @@
 
 ---
 
+## Deferred to Phase 4 (from the Phase 3 final review)
+
+- **FFI `set_next` + a `QueueManager` jump/`next` composition** — the queue-UI's tap-to-play seam (the desktop's row-activation rides `Command::SetNext`); explicitly plan it, don't discover it in Phase 4's UI work.
+- **Settings-saver/state-restore must normalize the remote port** on save/load (a saved ephemeral 0 clamps to 1024 at load-time validation and moves the server) — the degraded-window address-move fix rides this same work.
+- Skip-tick poll branch test (transient throw → loop survives → `lastPollFailure` clears on the next success — trivial via the `FausteEngineInterface` seam).
+- Gradle: derive the JNA host dispatch path from `os.name`/`os.arch` (currently hardcoded linux-x86-64 — fails loudly elsewhere, blocks mac/ARM contributors).
+- Dedup `CountingDispatches` (`PlayerControllerRealEngineTest` should adopt `RealEngineFixture`'s).
+- `QueueManager.move`: clamp `toIndex` before `toInt()` (a pathological > Int.MAX index stalls the confirm window the full 2 s).
+- Do NOT key Phase-4 UI state on `enqueue`'s returned id (concurrent duplicate-path enqueues can both confirm on the newest row — read row ids from the playlist flow).
+- Wire the controller's 100 ms poll idling to `AppLifecycleHolder` (currently never idles — runs while stopped and backgrounded).
+- `RemoteInfo`: consider an error field (a bind-failure retry currently reads as enabled-with-empty-address).
+- `networkSecurityConfig` permitting cleartext to 127.0.0.1 for on-device `RemoteApi.fetchState`.
+- Volume observability: surface a volume flow in the UI layer (the repository exposes only a snapshot, documented).
+- Consume `PlaybackState.fromEngineState` for the ViewModel mapping (tested, plan-mandated, currently unconsumed — by design until Phase 4).
+- Decide the queue-refresh story for HTTP-remote mutations before the remote-control feature becomes user-visible (the QueueManager flow goes stale on them until the next local mutation — documented caveat).
+- Stale desktop line citations in KDoc (ffi.rs + bindings): refresh opportunistically as Phase 4 touches each one.
+
 ## Notes for the implementer
 
 - The Kotlin side must treat the bindings as read-only generated code; nothing outside `bindings/kotlin/` edits them.
