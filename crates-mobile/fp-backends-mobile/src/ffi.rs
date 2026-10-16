@@ -341,10 +341,12 @@ impl FausteEngine {
     /// last entry the player left (R24, `fp-model/src/reducer.rs:563`)
     /// and is a model no-op unless the player is playing. There is no
     /// `Next` command to expose — advancing is the engine's own
-    /// transition (`StartNextAt`); jumping ahead in the queue is
+    /// transition (`StartNextAt`); queue-jump-ahead is
     /// `Command::SetNext(player, entry)`
     /// (`fp-app/src/ui/table.rs:898-908`, `fp-remote/src/api.rs:156-160`),
-    /// which Task 3's QueueManager composes over `get_playlist` + `play`.
+    /// but reaching it from Kotlin would require an FFI `set_next`
+    /// surface over that command — NOT exposed in Phase 3 (a Phase 4
+    /// item), so the mobile side cannot target `SetNext` at all.
     pub fn previous(&self) -> Result<(), FausteError> {
         self.send_main(Command::Previous)
     }

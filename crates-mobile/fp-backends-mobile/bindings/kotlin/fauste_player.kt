@@ -1144,7 +1144,7 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_play() != 59136.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_previous() != 37677.toShort()) {
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_previous() != 53168.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_remote_status() != 14741.toShort()) {
@@ -1661,10 +1661,12 @@ public interface FausteEngineInterface {
      * last entry the player left (R24, `fp-model/src/reducer.rs:563`)
      * and is a model no-op unless the player is playing. There is no
      * `Next` command to expose — advancing is the engine's own
-     * transition (`StartNextAt`); jumping ahead in the queue is
+     * transition (`StartNextAt`); queue-jump-ahead is
      * `Command::SetNext(player, entry)`
      * (`fp-app/src/ui/table.rs:898-908`, `fp-remote/src/api.rs:156-160`),
-     * which Task 3's QueueManager composes over `get_playlist` + `play`.
+     * but reaching it from Kotlin would require an FFI `set_next`
+     * surface over that command — NOT exposed in Phase 3 (a Phase 4
+     * item), so the mobile side cannot target `SetNext` at all.
      */
     fun `previous`()
 
@@ -1977,10 +1979,12 @@ open class FausteEngine :
      * last entry the player left (R24, `fp-model/src/reducer.rs:563`)
      * and is a model no-op unless the player is playing. There is no
      * `Next` command to expose — advancing is the engine's own
-     * transition (`StartNextAt`); jumping ahead in the queue is
+     * transition (`StartNextAt`); queue-jump-ahead is
      * `Command::SetNext(player, entry)`
      * (`fp-app/src/ui/table.rs:898-908`, `fp-remote/src/api.rs:156-160`),
-     * which Task 3's QueueManager composes over `get_playlist` + `play`.
+     * but reaching it from Kotlin would require an FFI `set_next`
+     * surface over that command — NOT exposed in Phase 3 (a Phase 4
+     * item), so the mobile side cannot target `SetNext` at all.
      */
     @Throws(FausteException::class)
     override fun `previous`() =
