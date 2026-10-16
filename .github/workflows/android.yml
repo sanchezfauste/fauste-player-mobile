@@ -60,7 +60,10 @@ jobs:
         run: rustup target add aarch64-linux-android x86_64-linux-android
 
       - name: Gradle build and tests
-        run: ./gradlew buildRust :fp-app-mobile-shared:test :composeApp:assembleDebug
+        # :composeApp:testDebugUnitTest runs the Robolectric-based Compose
+        # UI tests on the host JVM (no emulator needed) — see
+        # composeApp/build.gradle.kts's androidUnitTest note.
+        run: ./gradlew buildRust :fp-app-mobile-shared:test :composeApp:assembleDebug :composeApp:testDebugUnitTest
 
       # Bindings drift check: regenerate the Kotlin bindings into a temp dir
       # and diff against the committed files. ktlint is pinned to 1.7.1 and

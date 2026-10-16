@@ -22,10 +22,26 @@ koin = "4.0.0"
 # stdlib (1.10.2 is its latest patch); it is the version JNA-less common code
 # and the DI dispatchers compile against.
 kotlinxCoroutines = "1.10.2"
+# Robolectric runs Compose UI tests on the host JVM under
+# :composeApp:testDebugUnitTest. CMP's own common ui-test API
+# (runComposeUiTest) cannot run on an android (local) target and its
+# instrumented path needs an emulator; Robolectric is the only lane that
+# executes behavioural component tests in the plain Gradle battery
+# (JDK 21 in CI, JDK 25 locally; Robolectric 4.17 supports both).
+robolectric = "4.17"
+# androidx compose-ui test artifact for the Robolectric lane. CMP 1.9.3's
+# own uiTestJUnit4 accessor is desktop-only (deprecated), so the androidx
+# coordinate is used directly, pinned to the exact androidx version CMP
+# 1.9.3 resolves to on the android target (the 1.9.4 wave that BOM
+# 2025.11.00 manages — verified against the resolved ui-android 1.9.4).
+androidxComposeUiTest = "1.9.4"
 
 [libraries]
 compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4", version.ref = "androidxComposeUiTest" }
+androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest", version.ref = "androidxComposeUiTest" }
 koin-core = { group = "io.insert-koin", name = "koin-core", version.ref = "koin" }
 koin-android = { group = "io.insert-koin", name = "koin-android", version.ref = "koin" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }

@@ -22,6 +22,17 @@ kotlin {
                 implementation(compose.foundation)
                 implementation(compose.material3)
                 implementation(compose.ui)
+                // Material icon vectors for the transport controls. The
+                // extended set ships frozen at 1.7.3 (Compose stopped
+                // releasing the icons artifact; CMP keeps redistributing
+                // this exact version) and is the standard source for
+                // Pause / SkipPrevious / VolumeUp, which material3 1.4.0
+                // does not bundle (it dropped its material-icons-core
+                // dependency).
+                implementation(compose.materialIconsExtended)
+                // The composeResources/font/ Inter files load through
+                // the CMP resources runtime (Res accessors + Font()).
+                implementation(compose.components.resources)
             }
         }
         androidMain {
@@ -35,7 +46,43 @@ kotlin {
                 // Multiplatform 1.9.3, so the pin stays catalog-only.
             }
         }
+        // Compose UI tests run as Robolectric-based Android UNIT tests on
+        // the host JVM (see libs.versions.toml's robolectric note): CMP's
+        // common ui-test API cannot execute on an android local target and
+        // instrumented tests need an emulator, so `createComposeRule()` +
+        // RobolectricTestRunner under testDebugUnitTest is the lane that
+        // actually runs in the Gradle battery, on the very components the
+        // app ships.
+        androidUnitTest {
+            dependencies {
+                // The androidx compose ui-test artifact matching the 1.9.4
+                // compose CMP 1.9.3 builds on (createComposeRule and the
+                // semantics matchers/assertions). CMP's own uiTestJUnit4
+                // accessor is desktop-only, hence the direct androidx
+                // coordinate from the version catalog.
+                implementation(libs.androidx.compose.ui.test.junit4)
+                implementation(libs.robolectric)
+                implementation(kotlin("test"))
+            }
+        }
     }
+}
+
+compose {
+    resources {
+        // The generated Res accessors for composeResources/ (the Inter
+        // fonts under font/ and the OFL notice under files/). Pinned so
+        // imports are deterministic instead of derived from group/name.
+        packageOfResClass = "org.fauste.player.res"
+    }
+}
+
+dependencies {
+    // createComposeRule() launches a bare ComponentActivity; ui-test-manifest
+    // declares it in the DEBUG variant's merged manifest (no launcher
+    // intent-filter, so the debug APK gains no extra launcher icon; release
+    // builds never see it).
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
 android {
@@ -64,6 +111,36 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    testOptions {
+        unitTests {
+            // Robolectric reads the merged manifest + packaged resources
+            // (fonts included) so the unit-test classpath matches the app.
+            isIncludeAndroidResources = true
+        }
+    }
+}
+
+// Robolectric reflectively reaches into JDK internals (SharedSecrets,
+// sun.nio.ch, ...) which the module system locks down on JDK 17+; neither
+// AGP nor KGP inject the required --add-opens flags, so the unit-test JVM
+// gets them explicitly. Required on the local JDK 25 daemon and harmless
+// under CI's JDK 21.
+tasks.withType<Test>().configureEach {
+    jvmArgs(
+        "--add-opens=java.base/java.lang=ALL-UNNAMED",
+        "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+        "--add-opens=java.base/java.io=ALL-UNNAMED",
+        "--add-opens=java.base/java.net=ALL-UNNAMED",
+        "--add-opens=java.base/java.nio=ALL-UNNAMED",
+        "--add-opens=java.base/java.util=ALL-UNNAMED",
+        "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
+        "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED",
+        "--add-opens=java.base/java.util.concurrent.locks=ALL-UNNAMED",
+        "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
+        "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+        "--add-opens=java.base/sun.security.action=ALL-UNNAMED",
+    )
 }
 
 // --- Rust ------------------------------------------------------------------
