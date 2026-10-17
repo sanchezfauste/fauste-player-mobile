@@ -7,6 +7,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import org.fauste.player.platform.AppLifecycleHolder
 import org.fauste.player.platform.Storage
 import org.fauste.player.player.PlayerController
 import org.fauste.player.player.QueueManager
@@ -89,7 +90,7 @@ class LibraryViewModelTest {
         // the first runCurrent() either way; the LibraryScreen suite's
         // real-IO lane needs this ordering to stay deterministic.
         engine.playlist.value = playlist
-        controller = PlayerController(engine, commandDispatcher)
+        controller = PlayerController(engine, AppLifecycleHolder(), commandDispatcher)
         queue = QueueManager(engine, commandDispatcher)
         repository = PlaylistRepository(queue, controller)
         media = MediaRepository(CannedStorage(storageAnswer), repository)

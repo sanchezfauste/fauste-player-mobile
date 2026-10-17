@@ -5,10 +5,13 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import org.fauste.player.platform.AppLifecycleHolder
+import org.fauste.player.platform.AppLifecycleState
 import org.fauste.player.platform.audioReadPermission
 import org.fauste.player.ui.navigation.AppNavHost
 import org.fauste.player.ui.theme.FausteTheme
 import org.fauste.player.viewmodel.LibraryViewModel
+import org.koin.android.ext.android.inject
 import org.koin.androidx.viewmodel.ext.android.viewModel
 import org.koin.compose.KoinContext
 
@@ -39,6 +42,20 @@ import org.koin.compose.KoinContext
  * The composition itself stays state-in from the ViewModel layer only —
  * [KoinContext] binds FausteApplication's running container, no playback
  * or import logic lives here beyond the launchers.
+ *
+ * THE APP LIFECYCLE SIGNAL (the poll-idling wiring — the Activity's
+ * half, and deliberately its WHOLE half): onStart/onStop feed
+ * [AppLifecycleHolder] — the Phase-3 plain box, per Lifecycle.kt's
+ * dependency-discipline note (NO `androidx.lifecycle` /
+ * ProcessLifecycleOwner; the Activity's own overrides ARE the signal).
+ * The controller observes the same holder on its own dispatcher, so
+ * the Activity touches ONLY this cheap plain object here — resolving
+ * the engine-backed controller on the main thread would violate the
+ * graph's documented off-main rule, and the holder keeps one source of
+ * truth for every consumer (the controller now; the playback service
+ * in Task 6). Backgrounding therefore idles the poll's UI-state
+ * updates, NOT playback: the engine's audio path is native and keeps
+ * playing — see PlayerController's idling KDoc.
  */
 class MainActivity : ComponentActivity() {
     // Same instance as the LibraryScreen composition's koinViewModel():
@@ -47,6 +64,11 @@ class MainActivity : ComponentActivity() {
     // launcher callback (main thread, light — the VM constructor only
     // holds Lazy handles; the engine never resolves here).
     private val libraryViewModel: LibraryViewModel by viewModel()
+
+    // The lifecycle holder: a plain Koin single (nothing engine-backed
+    // in its dependency path), so resolving it on the main thread in
+    // onStart/onStop is exactly the cheap operation it looks like.
+    private val lifecycleHolder: AppLifecycleHolder by inject()
 
     private val requestAudioPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -71,6 +93,18 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** Feeds the holder the foreground half of the app-lifecycle signal (the class KDoc's wiring). */
+    override fun onStart() {
+        super.onStart()
+        lifecycleHolder.update(AppLifecycleState.Foreground)
+    }
+
+    /** Feeds the holder the background half — the poll idles (playback does not; the class KDoc). */
+    override fun onStop() {
+        super.onStop()
+        lifecycleHolder.update(AppLifecycleState.Background)
     }
 
     /**

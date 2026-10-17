@@ -59,6 +59,26 @@ class SettingsRepository(
     val remoteState: StateFlow<RemoteInfo> = remote.state
 
     /**
+     * Re-reads the remote record NOW and publishes it into [remoteState]
+     * — the on-demand refresh a settings screen uses the moment it appears
+     * and on an explicit refresh intent ([RemoteServer.refresh]'s own
+     * contract). Unlike the slow poll's silent-failure channel, a failure
+     * here is the caller's answer: mapped to [CommandResult.Failed] with
+     * the real cause (the same honest mapping as [selectBackend]; a
+     * destroyed engine lands here with UniFFI's message), while the flow
+     * keeps the last good record either way.
+     */
+    suspend fun refreshRemote(): CommandResult =
+        withContext(dispatcher) {
+            try {
+                remote.refresh()
+                CommandResult.Accepted
+            } catch (e: Exception) {
+                CommandResult.fromException(e)
+            }
+        }
+
+    /**
      * The current volume (linear gain 0.0–1.0), mirrored from the
      * controller's polled snapshot — no engine call of its own.
      */

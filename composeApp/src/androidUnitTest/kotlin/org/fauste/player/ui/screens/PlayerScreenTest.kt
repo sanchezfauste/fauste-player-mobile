@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import org.fauste.player.platform.AppLifecycleHolder
 import org.fauste.player.player.PlayerController
 import org.fauste.player.player.QueueManager
 import org.fauste.player.player.ScriptedEngine
@@ -70,7 +71,7 @@ class PlayerScreenTest {
                     track = track(title = "Nocturne", artist = "Fauste Trio", duration = 301.0),
                 ),
             )
-        controller = PlayerController(engine, Dispatchers.IO)
+        controller = PlayerController(engine, AppLifecycleHolder(), Dispatchers.IO)
         queue = QueueManager(engine, Dispatchers.IO)
         repository = PlaylistRepository(queue, controller)
         viewModel =

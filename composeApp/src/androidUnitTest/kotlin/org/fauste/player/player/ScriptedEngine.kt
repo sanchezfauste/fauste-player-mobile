@@ -31,7 +31,9 @@ import kotlin.concurrent.Volatile
  *
  * Unscripted surface: methods no suite uses fail LOUDLY (`error(...)`), so
  * an accidental engine call surfaces as a test failure, never a silent
- * default.
+ * default. The Settings suites script the settings surface
+ * (`getAvailableBackends`, `setBackend`, `remoteStatus`) — counters and
+ * error injectors above; `stop`/`removeEntry`/`moveEntry` stay loud.
  */
 class ScriptedEngine(
     initialState: EngineState,
@@ -49,6 +51,15 @@ class ScriptedEngine(
     val setNextCalls = CopyOnWriteArrayList<ULong>()
     val previousCalls = AtomicInteger(0)
     val enqueueCalls = CopyOnWriteArrayList<Track>()
+    val backendProbes = AtomicInteger(0)
+    val setBackendCalls = CopyOnWriteArrayList<String>()
+    val remoteStatusCalls = AtomicInteger(0)
+
+    /** What [getAvailableBackends] reads; the Settings suite scripts the probed list. */
+    val backends: MutableStateFlow<List<BackendInfo>> = MutableStateFlow(emptyList())
+
+    /** What [remoteStatus] reads; scripted per test (the seed mirrors [RemoteInfo]'s). */
+    val remote: MutableStateFlow<RemoteInfo> = MutableStateFlow(RemoteInfo(enabled = false, address = ""))
 
     /** Thrown by [play] while non-null — injects [FausteException.Busy] etc. */
     @Volatile
@@ -65,6 +76,22 @@ class ScriptedEngine(
     /** Thrown by [setNext] while non-null (the arm is then NOT accepted). */
     @Volatile
     var setNextError: Exception? = null
+
+    /** Thrown by [setVolume] while non-null (the volume is then NOT applied). */
+    @Volatile
+    var setVolumeError: Exception? = null
+
+    /** Thrown by [setBackend] while non-null (the switch is then NOT applied). */
+    @Volatile
+    var setBackendError: Exception? = null
+
+    /** Thrown by [getAvailableBackends] while non-null (the probe then answers nothing). */
+    @Volatile
+    var backendsError: Exception? = null
+
+    /** Thrown by [remoteStatus] while non-null (the record is then NOT applied). */
+    @Volatile
+    var remoteStatusError: Exception? = null
 
     override fun getState(): EngineState = state.value
 
@@ -95,6 +122,7 @@ class ScriptedEngine(
 
     override fun setVolume(volume: Float) {
         setVolumes.add(volume)
+        setVolumeError?.let { throw it }
         state.value = state.value.copy(volume = volume)
     }
 
@@ -136,11 +164,33 @@ class ScriptedEngine(
         toIndex: UInt,
     ) = error("moveEntry is not scripted in this double")
 
-    override fun setBackend(backendId: String) = error("setBackend is not scripted in this double")
+    /**
+     * Records and APPLIES the backend switch, seek's shape: the real
+     * engine reports the new backend in `get_state()` within a bounded
+     * window of accepting `set_backend`, so the double reflects it
+     * immediately for the poll loop to pick up (fallback behavior on
+     * unavailable backends is engine-side, Phase-3-tested — the double
+     * reports verbatim).
+     */
+    override fun setBackend(backendId: String) {
+        setBackendCalls.add(backendId)
+        setBackendError?.let { throw it }
+        state.value = state.value.copy(backend = backendId)
+    }
 
-    override fun getAvailableBackends(): List<BackendInfo> = error("getAvailableBackends is not scripted in this double")
+    /** The probed list, straight from the scripted [backends]; each probe counts. */
+    override fun getAvailableBackends(): List<BackendInfo> {
+        backendProbes.incrementAndGet()
+        backendsError?.let { throw it }
+        return backends.value
+    }
 
-    override fun remoteStatus(): RemoteInfo = error("remoteStatus is not scripted in this double")
+    /** The scripted [remote] record; each read counts (the poll + the on-demand refresh). */
+    override fun remoteStatus(): RemoteInfo {
+        remoteStatusCalls.incrementAndGet()
+        remoteStatusError?.let { throw it }
+        return remote.value
+    }
 
     private val nextEnqueueId = AtomicInteger(0)
 
@@ -155,7 +205,8 @@ internal fun engineState(
     duration: Double = 0.0,
     track: Track? = null,
     volume: Float = 1.0f,
-): EngineState = EngineState(status, position, duration, track, volume, "null")
+    backend: String = "null",
+): EngineState = EngineState(status, position, duration, track, volume, backend)
 
 /** Test fixture: a model-shaped track (the FFI carries the stem-derived title). */
 internal fun track(

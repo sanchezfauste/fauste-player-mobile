@@ -5,6 +5,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.fauste.player.platform.AppLifecycleHolder
 import org.fauste.player.player.CommandResult
 import org.fauste.player.player.PlayerController
 import org.fauste.player.player.RealEngineFixture
@@ -20,8 +21,9 @@ import kotlin.test.assertTrue
 /**
  * The real engine behind the settings repository (Ruling 7): backend
  * probes and selection are real FFI round trips, volume mirrors the
- * controller's real polled snapshot, and remoteState is the very flow
- * [RemoteServer] owns. Every wait is bounded (2 s).
+ * controller's real polled snapshot, remoteState is the very flow
+ * [RemoteServer] owns, and the on-demand refresh is a real read whose
+ * failure surfaces to its caller. Every wait is bounded (2 s).
  */
 class SettingsRepositoryRealEngineTest {
     private val dirs = RealEngineFixture.TempDirs("settings-repo")
@@ -36,7 +38,7 @@ class SettingsRepositoryRealEngineTest {
     private fun newRepository(): SettingsRepository =
         SettingsRepository(
             engine,
-            PlayerController(engine, Dispatchers.Default),
+            PlayerController(engine, AppLifecycleHolder(), Dispatchers.Default),
             RemoteServer(engine, Dispatchers.Default),
             Dispatchers.Default,
         )
@@ -95,7 +97,7 @@ class SettingsRepositoryRealEngineTest {
             val repository =
                 SettingsRepository(
                     engine,
-                    PlayerController(engine, Dispatchers.Default),
+                    PlayerController(engine, AppLifecycleHolder(), Dispatchers.Default),
                     remote,
                     Dispatchers.Default,
                 )
@@ -118,5 +120,36 @@ class SettingsRepositoryRealEngineTest {
                 }
             assertTrue(info.address.isNotEmpty(), "the loopback bind carries an address")
             assertEquals(info, flow.value, "the repository's flow carries the wrapper's record")
+        }
+
+    /**
+     * The on-demand refresh a settings screen uses: Accepted on a live
+     * read (the record publishes into the very flow [SettingsRepository.remoteState]
+     * hands out), Failed with the real cause on a dead engine — whoever
+     * asks explicitly deserves the real answer (the [RemoteServer.refresh]
+     * contract), mapped like every other command-shaped surface here.
+     */
+    @Test
+    fun refreshRemoteRepublishesAndSurfacesADeadEngineAsFailed() =
+        runBlocking {
+            val repository = newRepository()
+
+            assertEquals(CommandResult.Accepted, repository.refreshRemote())
+            // The refresh published into the flow: the engine's bind is
+            // visible. The remote binds on its own spawned thread
+            // (fp-remote's `spawn`), so the first read can still see Off —
+            // re-refresh within the bounded window, like the sibling test.
+            withTimeout(2_000) {
+                while (!repository.remoteState.value.enabled) {
+                    delay(20)
+                    assertEquals(CommandResult.Accepted, repository.refreshRemote())
+                }
+            }
+
+            engine.close() // the ENGINE, not the repository
+
+            val refused = repository.refreshRemote()
+            assertTrue(refused is CommandResult.Failed, "expected Failed, was $refused")
+            assertTrue(refused.message.isNotBlank(), "the failure carries the real cause, not a blank")
         }
 }

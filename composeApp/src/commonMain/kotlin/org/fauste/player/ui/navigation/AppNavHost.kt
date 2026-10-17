@@ -5,13 +5,10 @@
 
 package org.fauste.player.ui.navigation
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -21,13 +18,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
 import org.fauste.player.ui.screens.LibraryScreen
 import org.fauste.player.ui.screens.PlayerScreen
+import org.fauste.player.ui.screens.SettingsScreen
 
 /**
  * The 3-destination app shell.
@@ -87,36 +83,8 @@ fun AppNavHost(
             when (current) {
                 AppDestinations.Player -> PlayerScreen()
                 AppDestinations.Library -> LibraryScreen(onImportClick = onImportClick)
-                AppDestinations.Settings -> ComingTaskPlaceholder("Settings")
+                AppDestinations.Settings -> SettingsScreen()
             }
         }
-    }
-}
-
-/**
- * Honest placeholder for the one tab whose screen lands in a later phase
- * task (Task 6 wires Settings): the destination is reachable and
- * labeled now, and says so instead of faking content.
- */
-@Composable
-private fun ComingTaskPlaceholder(title: String) {
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
-        Text(
-            text = "$title screen arrives in a later task.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }

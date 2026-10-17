@@ -14,14 +14,18 @@ import kotlinx.coroutines.test.setMain
 import org.fauste.player.di.DefaultDispatcher
 import org.fauste.player.di.IoDispatcher
 import org.fauste.player.di.viewModelModule
+import org.fauste.player.platform.AppLifecycleHolder
 import org.fauste.player.platform.Storage
 import org.fauste.player.player.PlayerController
 import org.fauste.player.player.QueueManager
 import org.fauste.player.player.ScriptedEngine
 import org.fauste.player.player.engineState
 import org.fauste.player.player.track
+import org.fauste.player.remote.RemoteServer
 import org.fauste.player.repository.MediaRepository
 import org.fauste.player.repository.PlaylistRepository
+import org.fauste.player.repository.SettingsRepository
+import org.fauste.player.rust.BackendInfo
 import org.fauste.player.rust.FausteEngineInterface
 import org.fauste.player.ui.theme.FausteTheme
 import org.junit.After
@@ -49,10 +53,12 @@ import kotlin.test.assertEquals
  *
  * Asserted: the Player start destination renders through that wiring, all
  * three tabs carry their label as a contentDescription, every tab is
- * reachable — the Library tab now renders the real LibraryScreen (its
- * empty-queue call to action), whose Import button fires the host seam
- * the Activity supplies (the launchers themselves are the Activity's
- * manually-verified part — see LibraryScreen's KDoc).
+ * reachable — the Library tab renders the real LibraryScreen (its
+ * empty-queue call to action), the Settings tab the real SettingsScreen
+ * (its backend section over the scripted graph's SettingsRepository), and
+ * the Library's Import button fires the host seam the Activity supplies
+ * (the launchers themselves are the Activity's manually-verified part —
+ * see LibraryScreen's KDoc).
  */
 @RunWith(RobolectricTestRunner::class)
 // A bare Application instead of the manifest's FausteApplication: this suite
@@ -76,6 +82,13 @@ class AppNavHostTest {
                     duration = 301.0,
                     track = track(title = "Nocturne", duration = 301.0),
                 ),
+            )
+        // The Settings tab renders the real screen now: its one-shot
+        // backend probe reads the double, so the list is scripted here.
+        engine.backends.value =
+            listOf(
+                BackendInfo(id = "null", name = "Null output", available = true),
+                BackendInfo(id = "aaudio", name = "AAudio", available = false),
             )
         startKoin { modules(scriptedGraphModule(), viewModelModule) }
     }
@@ -133,13 +146,16 @@ class AppNavHostTest {
                 .fetchSemanticsNodes()
                 .isNotEmpty()
         }
+        // The Settings tab too: the real screen's backend section renders
+        // the probed rows from the scripted graph's SettingsRepository.
         composeRule.onNodeWithContentDescription("Settings").performClick()
         composeRule.waitUntil(TIMEOUT_MILLIS) {
             composeRule
-                .onAllNodesWithText("Settings screen arrives in a later task.")
+                .onAllNodesWithText("Null output")
                 .fetchSemanticsNodes()
                 .isNotEmpty()
         }
+        composeRule.onNodeWithText("Output backend").assertExists()
         composeRule.onNodeWithContentDescription("Player").performClick()
         composeRule.waitUntil(TIMEOUT_MILLIS) {
             composeRule.onAllNodesWithText("Nocturne").fetchSemanticsNodes().isNotEmpty()
@@ -172,21 +188,25 @@ class AppNavHostTest {
 
     /**
      * The scripted-engine graph: the same shape as the shared module's
-     * appModule (controller/queue/repositories over one engine, dispatchers
-     * by qualifier) with the heavy real engine swapped for the double, plus
-     * composeApp's real [viewModelModule] — so the production definitions
-     * themselves are exercised. The Storage seam is stubbed (no import runs
-     * here; the Android actual's Uri/ContentResolver path cannot run on the
-     * host JVM anyway).
+     * appModule (controller/queue/remote/repositories over one engine,
+     * the lifecycle holder, dispatchers by qualifier) with the heavy
+     * real engine swapped for the double, plus composeApp's real
+     * [viewModelModule] — so the production definitions themselves are
+     * exercised. The Storage seam is stubbed (no import runs here; the
+     * Android actual's Uri/ContentResolver path cannot run on the host
+     * JVM anyway).
      */
     private fun scriptedGraphModule(): Module =
         module {
             single<FausteEngineInterface> { engine }
+            single { AppLifecycleHolder() }
             single(IoDispatcher) { Dispatchers.IO }
             single(DefaultDispatcher) { Dispatchers.Default }
-            single { PlayerController(get(), get(IoDispatcher)) }.onClose { it?.close() }
+            single { PlayerController(get(), get(), get(IoDispatcher)) }.onClose { it?.close() }
             single { QueueManager(get(), get(IoDispatcher)) }.onClose { it?.close() }
+            single { RemoteServer(get(), get(IoDispatcher)) }.onClose { it?.close() }
             single { PlaylistRepository(get(), get()) }
+            single { SettingsRepository(get(), get(), get(), get(IoDispatcher)) }
             single { MediaRepository(NoopStorage(), get()) }
         }
 

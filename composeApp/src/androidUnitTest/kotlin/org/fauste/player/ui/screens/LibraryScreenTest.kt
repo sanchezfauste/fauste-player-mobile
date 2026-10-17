@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import org.fauste.player.platform.AppLifecycleHolder
 import org.fauste.player.platform.Storage
 import org.fauste.player.player.PlayerController
 import org.fauste.player.player.QueueManager
@@ -100,7 +101,7 @@ class LibraryScreenTest {
         // (real IO threads) loses arbitrarily. Mirrors real boot: the
         // persisted queue exists before the manager reads it.
         engine.playlist.value = playlist
-        controller = PlayerController(engine, Dispatchers.IO)
+        controller = PlayerController(engine, AppLifecycleHolder(), Dispatchers.IO)
         queue = QueueManager(engine, Dispatchers.IO)
         repository = PlaylistRepository(queue, controller)
         media = MediaRepository(CannedStorage(storageAnswer), repository)

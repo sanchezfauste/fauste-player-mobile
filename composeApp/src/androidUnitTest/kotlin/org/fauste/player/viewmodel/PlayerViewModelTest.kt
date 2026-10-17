@@ -5,6 +5,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import org.fauste.player.platform.AppLifecycleHolder
 import org.fauste.player.player.PlaybackState
 import org.fauste.player.player.PlayerController
 import org.fauste.player.player.QueueManager
@@ -78,7 +79,7 @@ class PlayerViewModelTest {
      */
     private fun makeViewModel(initial: EngineState): PlayerViewModel {
         engine = ScriptedEngine(initial)
-        controller = PlayerController(engine, commandDispatcher)
+        controller = PlayerController(engine, AppLifecycleHolder(), commandDispatcher)
         queue = QueueManager(engine, commandDispatcher)
         repository = PlaylistRepository(queue, controller)
         viewModel =

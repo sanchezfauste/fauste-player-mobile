@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
+import org.fauste.player.platform.AppLifecycleHolder
 import org.fauste.player.rust.FausteEngine
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.CoroutineContext
@@ -47,7 +48,7 @@ class PlayerControllerRealEngineTest {
             // before the paused/stopped assertions read it.
             val wav = RealEngineFixture.tinyWav(dirs, "long.wav", 44_100)
             engine.enqueue(RealEngineFixture.bareTrack(wav.absolutePath))
-            val controller = PlayerController(engine, Dispatchers.Default, pollPeriodMillis = 20)
+            val controller = PlayerController(engine, AppLifecycleHolder(), Dispatchers.Default, pollPeriodMillis = 20)
 
             assertEquals("stopped", controller.engineState.value.status, "the seed is a fresh engine's state")
 
@@ -68,7 +69,7 @@ class PlayerControllerRealEngineTest {
         runBlocking {
             val wav = RealEngineFixture.tinyWav(dirs, "long.wav", 44_100) // 1 s of audio
             engine.enqueue(RealEngineFixture.bareTrack(wav.absolutePath))
-            val controller = PlayerController(engine, Dispatchers.Default, pollPeriodMillis = 20)
+            val controller = PlayerController(engine, AppLifecycleHolder(), Dispatchers.Default, pollPeriodMillis = 20)
 
             assertEquals(CommandResult.Accepted, controller.play())
             withTimeout(2_000) { controller.engineState.first { it.status == "playing" } }
@@ -105,7 +106,7 @@ class PlayerControllerRealEngineTest {
 
         runTest {
             val counting = CountingDispatches(StandardTestDispatcher(testScheduler))
-            val controller = PlayerController(engine, counting, pollPeriodMillis = 10)
+            val controller = PlayerController(engine, AppLifecycleHolder(), counting, pollPeriodMillis = 10)
             // The first tick replaces the seed with the engine's real snapshot.
             runCurrent()
             assertEquals("playing", controller.engineState.value.status)
@@ -124,7 +125,7 @@ class PlayerControllerRealEngineTest {
     @Test
     fun aDestroyedEngineStopsTheLoopAndIsSurfacedNotSwallowed() =
         runBlocking {
-            val controller = PlayerController(engine, Dispatchers.Default, pollPeriodMillis = 20)
+            val controller = PlayerController(engine, AppLifecycleHolder(), Dispatchers.Default, pollPeriodMillis = 20)
             assertNull(controller.lastPollFailure.value)
 
             engine.close() // the ENGINE, not the controller

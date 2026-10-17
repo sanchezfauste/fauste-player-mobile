@@ -2,6 +2,7 @@ package org.fauste.player.di
 
 import org.fauste.player.viewmodel.LibraryViewModel
 import org.fauste.player.viewmodel.PlayerViewModel
+import org.fauste.player.viewmodel.SettingsViewModel
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 
@@ -30,4 +31,5 @@ val viewModelModule =
     module {
         viewModel { PlayerViewModel(inject(), inject(), inject(), get(IoDispatcher)) }
         viewModel { LibraryViewModel(inject(), inject(), inject(), get(IoDispatcher)) }
+        viewModel { SettingsViewModel(inject(), inject(), get(IoDispatcher)) }
     }

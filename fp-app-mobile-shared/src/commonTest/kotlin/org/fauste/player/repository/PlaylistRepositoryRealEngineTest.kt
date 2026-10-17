@@ -5,6 +5,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.fauste.player.platform.AppLifecycleHolder
 import org.fauste.player.player.CommandResult
 import org.fauste.player.player.EnqueueResult
 import org.fauste.player.player.PlayerController
@@ -38,7 +39,7 @@ class PlaylistRepositoryRealEngineTest {
     @Test
     fun anEnqueueThroughTheRepositoryReachesTheEngineAndItsFlows() =
         runBlocking {
-            val controller = PlayerController(engine, Dispatchers.Default)
+            val controller = PlayerController(engine, AppLifecycleHolder(), Dispatchers.Default)
             val queue = QueueManager(engine, Dispatchers.Default)
             val repository = PlaylistRepository(queue, controller)
             // A 1 s track, not the 23 ms default tone: the controller's
@@ -86,7 +87,7 @@ class PlaylistRepositoryRealEngineTest {
     @Test
     fun removeThroughTheRepositoryReshapesBothViews() =
         runBlocking {
-            val controller = PlayerController(engine, Dispatchers.Default)
+            val controller = PlayerController(engine, AppLifecycleHolder(), Dispatchers.Default)
             val queue = QueueManager(engine, Dispatchers.Default)
             val repository = PlaylistRepository(queue, controller)
             val wav = RealEngineFixture.tinyWav(dirs, "gone.wav")

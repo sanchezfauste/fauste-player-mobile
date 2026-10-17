@@ -64,7 +64,12 @@ actual fun appModule(): Module =
         // commands, queue mutations, the remote-status poll) runs on the
         // I/O dispatcher — they are JNA hops that can do disk work on the
         // Rust side; the CPU dispatcher stays free for real computation.
-        single { PlayerController(get<FausteEngineInterface>(), get(IoDispatcher)) }.onClose { it?.close() }
+        // The controller takes the lifecycle holder: its poll idles on
+        // the Background signal (MainActivity feeds the holder from its
+        // own onStart/onStop — see PlayerController's idling KDoc).
+        single {
+            PlayerController(get<FausteEngineInterface>(), get<AppLifecycleHolder>(), get(IoDispatcher))
+        }.onClose { it?.close() }
         single { QueueManager(get<FausteEngineInterface>(), get(IoDispatcher)) }.onClose { it?.close() }
         single { RemoteServer(get<FausteEngineInterface>(), get(IoDispatcher)) }.onClose { it?.close() }
 

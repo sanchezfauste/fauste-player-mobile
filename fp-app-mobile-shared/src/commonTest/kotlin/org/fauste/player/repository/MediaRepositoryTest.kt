@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.fauste.player.platform.AppLifecycleHolder
 import org.fauste.player.platform.Storage
 import org.fauste.player.player.PlayerController
 import org.fauste.player.player.QueueManager
@@ -55,7 +56,7 @@ class MediaRepositoryTest {
     @Test
     fun aFailedCopyIsNeverEnqueued() =
         runBlocking {
-            val controller = PlayerController(engine, Dispatchers.Default)
+            val controller = PlayerController(engine, AppLifecycleHolder(), Dispatchers.Default)
             val queue = QueueManager(engine, Dispatchers.Default)
             val repository = MediaRepository(CannedStorage { null }, PlaylistRepository(queue, controller))
 
@@ -75,7 +76,7 @@ class MediaRepositoryTest {
     @Test
     fun aSuccessfulCopyIsEnqueuedAndThePathAnswers() =
         runBlocking {
-            val controller = PlayerController(engine, Dispatchers.Default)
+            val controller = PlayerController(engine, AppLifecycleHolder(), Dispatchers.Default)
             val queue = QueueManager(engine, Dispatchers.Default)
             // A real file on disk stands in for the copy's output, so the
             // enqueue half is fully honest: the engine can read the path.
@@ -100,7 +101,7 @@ class MediaRepositoryTest {
     @Test
     fun aCancelledCopyPropagatesInsteadOfBecomingAFailure() =
         runBlocking {
-            val controller = PlayerController(engine, Dispatchers.Default)
+            val controller = PlayerController(engine, AppLifecycleHolder(), Dispatchers.Default)
             val queue = QueueManager(engine, Dispatchers.Default)
             val repository = MediaRepository(HangingStorage, PlaylistRepository(queue, controller))
 
