@@ -35,10 +35,25 @@ robolectric = "4.17"
 # 1.9.3 resolves to on the android target (the 1.9.4 wave that BOM
 # 2025.11.00 manages — verified against the resolved ui-android 1.9.4).
 androidxComposeUiTest = "1.9.4"
+# media3 1.11.1 — the current stable release line (verified against
+# dl.google.com/android/maven2's media3-session maven-metadata.xml, where
+# <release> and <latest> are both 1.11.1, lastUpdated 2026-09-11; androidx
+# artifacts are hosted on Google Maven, not repo1.maven.org). media3 is the
+# media session stack this phase's ruling names (MediaSessionCompat is
+# legacy): media3-session carries MediaSessionService/MediaSession, and
+# media3-common the Player surface the service adapter implements
+# (SimpleBasePlayer). minSdk 21+ comfortably covers the app's 26 floor.
+media3 = "1.11.1"
 
 [libraries]
 compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+# media3 (Task 6's MediaSession ruling): session carries MediaSessionService +
+# the MediaSession the service publishes; common carries the Player contract
+# the adapter implements and media3's own notification plumbing leans on.
+# Declared explicitly per the task brief even though session re-exports it.
+media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
+media3-common = { group = "androidx.media3", name = "media3-common", version.ref = "media3" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4", version.ref = "androidxComposeUiTest" }
 androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest", version.ref = "androidxComposeUiTest" }

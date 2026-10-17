@@ -5,6 +5,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTouchHeightIsEqualTo
+import androidx.compose.ui.test.assertTouchWidthIsEqualTo
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -12,6 +14,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.unit.dp
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -139,5 +142,24 @@ class PlayerControlsTest {
         setContent(positionSeconds = 0.0, durationSeconds = 0.0)
         composeRule.onNodeWithText("00:00 / 00:00").assertExists()
         composeRule.onNodeWithContentDescription("Seek bar").assertIsNotEnabled()
+    }
+
+    /**
+     * The Task-6 touch-target floor: Material3's IconButton is 40dp
+     * VISUALLY but must reserve the 48dp accessibility minimum in its
+     * TOUCH bounds — the measure the compose test exposes as touch
+     * bounds, and the one a TalkBack user's finger actually hits.
+     */
+    @Test
+    fun compactTransportControlsMeetThe48dpTouchTargetFloor() {
+        setContent(isPlaying = false)
+        composeRule
+            .onNodeWithContentDescription("Play")
+            .assertTouchWidthIsEqualTo(48.dp)
+            .assertTouchHeightIsEqualTo(48.dp)
+        composeRule
+            .onNodeWithContentDescription("Previous track")
+            .assertTouchWidthIsEqualTo(48.dp)
+            .assertTouchHeightIsEqualTo(48.dp)
     }
 }

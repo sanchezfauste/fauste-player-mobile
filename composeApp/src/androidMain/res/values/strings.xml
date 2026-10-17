@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The media notification's channel name (Task 6): shown in the
+         system's notification settings; created by media3's provider
+         on the first post. -->
+    <string name="playback_notification_channel_name">Playback</string>
+
+    <!-- The notification's Stop action label, spoken by TalkBack from
+         the lock screen and shown by OEM skins that render action
+         names. -->
+    <string name="playback_notification_stop">Stop</string>
+</resources>

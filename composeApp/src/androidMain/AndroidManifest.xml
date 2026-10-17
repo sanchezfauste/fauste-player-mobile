@@ -9,9 +9,20 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
+    <!-- The foreground playback service (Task 6, Ruling 5): FOREGROUND_SERVICE
+         is the API 26 base requirement; FOREGROUND_SERVICE_MEDIA_PLAYBACK is
+         the API 34 type requirement for a mediaPlayback-typed service.
+         POST_NOTIFICATIONS (API 33+) is requested at runtime in MainActivity —
+         with the honest degradation documented there; the media-session
+         notification itself is exempt from it by the platform's rules. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name=".FausteApplication"
         android:label="Fauste Player"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@style/Theme.Fauste">
 
         <activity
@@ -22,6 +33,22 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- The playback foreground service (Task 6): media3's
+             MediaSessionService contract — the action intent filter is
+             what MediaControllers and media-button routing bind through;
+             the mediaPlayback type matches what the library promotes the
+             service with on first Play (Ruling 5). exported=true is
+             required for external MediaController connections
+             (Bluetooth, System UI). -->
+        <service
+            android:name=".service.PlaybackService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

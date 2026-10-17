@@ -1,6 +1,8 @@
 package org.fauste.player
 
+import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -38,6 +40,11 @@ import org.koin.compose.KoinContext
  * document without any storage permission; the permission gate implements
  * the plan's Permissions contract (and is what a folder-scanning library
  * will need). The gate is the flow, the pick is its reward.
+ *
+ * - [ActivityResultContracts.RequestPermission] for POST_NOTIFICATIONS
+ *   (API 33+, Task 6): asked once on entering the app, per the
+ *   honest-degradation rule above — a denial never blocks playback,
+ *   and the launcher's callback deliberately ignores the answer.
  *
  * The composition itself stays state-in from the ViewModel layer only —
  * [KoinContext] binds FausteApplication's running container, no playback
@@ -84,8 +91,23 @@ class MainActivity : ComponentActivity() {
             uri?.let { libraryViewModel.onImportUri(it.toString()) }
         }
 
+    /**
+     * The POST_NOTIFICATIONS runtime request (API 33+, Task 6). Honest
+     * degradation, deliberately nothing more: the callback does nothing
+     * with the answer — a denial means no notification while playback
+     * (native, unaffected) continues; the media-session notification is
+     * exempt from the permission by the platform's own rules anyway
+     * (media3's MediaNotificationManager documents the exemption), so
+     * the request mostly serves OEM launchers that ignore it. Asked
+     * once per process: Android's own denial memory ("don't ask
+     * again") suppresses re-asking, so a per-process ask cannot nag.
+     */
+    private val requestNotificationsPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        maybeRequestNotificationsPermission()
         setContent {
             KoinContext {
                 FausteTheme {
@@ -123,5 +145,19 @@ class MainActivity : ComponentActivity() {
 
     private fun launchAudioPicker() {
         openAudioDocument.launch(arrayOf("audio/*"))
+    }
+
+    /**
+     * The non-blocking pass from the notification-permission KDoc: ask
+     * on entering the app, only while API 33+ and ungranted — the
+     * denial path is simply the request having happened.
+     */
+    private fun maybeRequestNotificationsPermission() {
+        val permission = Manifest.permission.POST_NOTIFICATIONS
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestNotificationsPermission.launch(permission)
+        }
     }
 }

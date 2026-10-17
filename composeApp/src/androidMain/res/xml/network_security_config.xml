@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ruling 6 (Task 6): the RemoteApi's HTTP transport needs cleartext
+     to the engine's loopback remote — 127.0.0.1:ephemeral (the FFI's
+     RemoteServer record, player_core.rs). Android 9+ blocks cleartext
+     by default; this config re-enables it for the loopback host ONLY:
+     every other destination keeps the platform's no-cleartext default
+     (the app makes no other network calls today, and any future one
+     must stay TLS). -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

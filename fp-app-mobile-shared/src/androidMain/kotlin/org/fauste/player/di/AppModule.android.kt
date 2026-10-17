@@ -66,12 +66,16 @@ actual fun appModule(): Module =
         // Rust side; the CPU dispatcher stays free for real computation.
         // The controller takes the lifecycle holder: its poll idles on
         // the Background signal (MainActivity feeds the holder from its
-        // own onStart/onStop — see PlayerController's idling KDoc).
+        // own onStart/onStop — see PlayerController's idling KDoc), and
+        // the remote-status poll idles through the SAME holder (the
+        // Task-6 fold).
         single {
             PlayerController(get<FausteEngineInterface>(), get<AppLifecycleHolder>(), get(IoDispatcher))
         }.onClose { it?.close() }
         single { QueueManager(get<FausteEngineInterface>(), get(IoDispatcher)) }.onClose { it?.close() }
-        single { RemoteServer(get<FausteEngineInterface>(), get(IoDispatcher)) }.onClose { it?.close() }
+        single {
+            RemoteServer(get<FausteEngineInterface>(), get(IoDispatcher), lifecycle = get<AppLifecycleHolder>())
+        }.onClose { it?.close() }
 
         // The remote HTTP client: HttpURLConnection on Dispatchers.IO.
         single<RemoteApi> { remoteApi() }

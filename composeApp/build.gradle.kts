@@ -48,6 +48,15 @@ kotlin {
         androidMain {
             dependencies {
                 implementation(libs.androidx.activity.compose)
+                // media3 (Task 6): MediaSessionService is the foreground
+                // service base the playback service extends; media3-common
+                // carries SimpleBasePlayer, the Player base the service's
+                // adapter implements. Both land on the main (non-test)
+                // classpath only — the unit-test lanes exercise the pure
+                // mapping + adapter through these same artifacts, no
+                // cdylib needed.
+                implementation(libs.media3.session)
+                implementation(libs.media3.common)
                 // The androidx.compose BOM is pinned in gradle/libs.versions.toml
                 // (2025.11.00 = the Jetpack Compose 1.9.4 wave CMP 1.9.3 builds
                 // on); KGP 2.2 deprecated applying it via platform() inside

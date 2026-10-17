@@ -33,7 +33,8 @@ import kotlin.concurrent.Volatile
  * an accidental engine call surfaces as a test failure, never a silent
  * default. The Settings suites script the settings surface
  * (`getAvailableBackends`, `setBackend`, `remoteStatus`) — counters and
- * error injectors above; `stop`/`removeEntry`/`moveEntry` stay loud.
+ * error injectors above; the Task-6 service lanes script `stop`;
+ * `removeEntry`/`moveEntry` stay loud.
  */
 class ScriptedEngine(
     initialState: EngineState,
@@ -50,6 +51,7 @@ class ScriptedEngine(
     val setVolumes = CopyOnWriteArrayList<Float>()
     val setNextCalls = CopyOnWriteArrayList<ULong>()
     val previousCalls = AtomicInteger(0)
+    val stopCalls = AtomicInteger(0)
     val enqueueCalls = CopyOnWriteArrayList<Track>()
     val backendProbes = AtomicInteger(0)
     val setBackendCalls = CopyOnWriteArrayList<String>()
@@ -135,7 +137,17 @@ class ScriptedEngine(
         previousCalls.incrementAndGet()
     }
 
-    override fun stop() = error("stop is not scripted in this double")
+    /**
+     * Records and APPLIES the stop (scripted for the Task-6 service
+     * lane): the real conductor's `stop` returns the transport to
+     * stopped within a bounded window, so the double flips the status
+     * immediately for the poll loop to pick up — the position resets
+     * with it (a stopped transport has no position).
+     */
+    override fun stop() {
+        stopCalls.incrementAndGet()
+        state.value = state.value.copy(status = "stopped", position = 0.0)
+    }
 
     /**
      * Records and APPLIES the enqueue: appends a [PlaylistEntry] with the

@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.fauste.player.platform.AppLifecycleHolder
+import org.fauste.player.platform.AppLifecycleState
 import org.fauste.player.rust.FausteEngineInterface
 import org.fauste.player.rust.RemoteInfo
 import kotlin.coroutines.cancellation.CancellationException
@@ -51,6 +53,16 @@ class RemoteServer(
     private val engine: FausteEngineInterface,
     private val dispatcher: CoroutineDispatcher,
     pollPeriodMillis: Long = DEFAULT_POLL_PERIOD_MILLIS,
+    /**
+     * The app-lifecycle holder (Task 6's fold): while the app is
+     * backgrounded the poll skips its FFI reads — the SAME idling
+     * contract as `PlayerController`'s (the holder it idles on), for
+     * the same reason: this flow only feeds UI state, and the native
+     * server itself is untouched. Optional by design: a consumer with
+     * no lifecycle signal (tests, a future desktop target) keeps the
+     * always-on rhythm.
+     */
+    private val lifecycle: AppLifecycleHolder? = null,
 ) : AutoCloseable {
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
 
@@ -78,23 +90,29 @@ class RemoteServer(
     private val pollLoop: Job =
         scope.launch {
             while (isActive) {
-                try {
-                    _state.value = engine.remoteStatus()
-                    // A good read restores the channel to null; the
-                    // StateFlow de-duplicates the repeated value.
-                    _lastPollFailure.value = null
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: IllegalStateException) {
-                    // The engine object was destroyed under us — polling a
-                    // dead engine is futile. Record why the loop is
-                    // stopping, keep the last record and stop.
-                    _lastPollFailure.value = e
-                    return@launch
-                } catch (e: Exception) {
-                    // One bad read must not kill the loop: record it, keep
-                    // the last record and try again next period.
-                    _lastPollFailure.value = e
+                // THE IDLE GATE (the fold, same shape as the controller's):
+                // a Background signal skips the engine read — the whole FFI
+                // boundary — and re-arms the plain delay; the first
+                // Foreground wake reads immediately.
+                if (lifecycle?.current() != AppLifecycleState.Background) {
+                    try {
+                        _state.value = engine.remoteStatus()
+                        // A good read restores the channel to null; the
+                        // StateFlow de-duplicates the repeated value.
+                        _lastPollFailure.value = null
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: IllegalStateException) {
+                        // The engine object was destroyed under us — polling a
+                        // dead engine is futile. Record why the loop is
+                        // stopping, keep the last record and stop.
+                        _lastPollFailure.value = e
+                        return@launch
+                    } catch (e: Exception) {
+                        // One bad read must not kill the loop: record it, keep
+                        // the last record and try again next period.
+                        _lastPollFailure.value = e
+                    }
                 }
                 delay(pollPeriodMillis)
             }

@@ -36,10 +36,16 @@ import org.fauste.player.ui.theme.Timecode
  * Honest limits: a duration of 0.0 means "unknown, not filled by the
  * services layer yet" and renders an em dash — never a fake "00:00".
  *
- * Accessibility: the whole row is one clickable target (title text is the
- * semantic label); the playing dot carries a "Now playing"
- * contentDescription only while visible, so TalkBack announces state
- * changes, and nothing is announced for a silent row.
+ * ACCESSIBILITY (the Task-6 pass): the whole row is ONE TalkBack
+ * target — `clickable` merges the descendants, so title, duration and
+ * the playing dot's state announce as a single node in tree order (the
+ * canonical Compose row shape; the tests pin the merge by finding one
+ * node carrying BOTH the title and the duration texts). The Task-6 gap
+ * this pass closes is the ACTION label: the click carries the honest
+ * "Arm as next track" — the tap arms the row as the player's next
+ * WITHOUT starting it (the desktop's row double-click contract — see
+ * LibraryViewModel's KDoc), and TalkBack says exactly that, not a
+ * generic "double tap to activate".
  */
 @Composable
 fun TrackRow(
@@ -53,13 +59,13 @@ fun TrackRow(
         modifier =
             modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick)
+                .clickable(onClickLabel = "Arm as next track", onClick = onClick)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // The slot always occupies its width so text alignment is stable
-        // across playing/paused states; the dot and its semantics appear
-        // only while playing.
+        // across playing/paused states; the playing dot's state rides the
+        // merged row (announced with it), so its own description marks it.
         Box(
             modifier =
                 Modifier
