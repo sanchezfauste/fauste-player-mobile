@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- The audio-read permission pair the platform contract names
+         (READ_MEDIA_AUDIO on API 33+, READ_EXTERNAL_STORAGE below):
+         declared here, requested at runtime on the first Import tap. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
     <application
         android:name=".FausteApplication"
         android:label="Fauste Player"

@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import org.fauste.player.ui.screens.LibraryScreen
 import org.fauste.player.ui.screens.PlayerScreen
 
 /**
@@ -43,6 +44,10 @@ import org.fauste.player.ui.screens.PlayerScreen
  * tabs never nests screens. Revisit this ruling the moment a destination
  * needs arguments or an external deep link.
  *
+ * [onImportClick] is the Library's IMPORT SEAM passed down from the host
+ * Activity (MainActivity owns the ActivityResult launchers — permission
+ * gate + SAF picker; see LibraryScreen's KDoc for the full contract).
+ *
  * Colours come from the composition's FausteTheme (Nocturne scheme);
  * labels come from [AppDestinations].
  *
@@ -51,7 +56,10 @@ import org.fauste.player.ui.screens.PlayerScreen
  * destination name and the tests can address each tab.
  */
 @Composable
-fun AppNavHost(modifier: Modifier = Modifier) {
+fun AppNavHost(
+    onImportClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     var currentRoute by rememberSaveable { mutableStateOf(AppDestinations.start.route) }
     val current = AppDestinations.fromRoute(currentRoute)
     Scaffold(
@@ -78,7 +86,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
         ) {
             when (current) {
                 AppDestinations.Player -> PlayerScreen()
-                AppDestinations.Library -> ComingTaskPlaceholder("Library")
+                AppDestinations.Library -> LibraryScreen(onImportClick = onImportClick)
                 AppDestinations.Settings -> ComingTaskPlaceholder("Settings")
             }
         }
@@ -86,8 +94,8 @@ fun AppNavHost(modifier: Modifier = Modifier) {
 }
 
 /**
- * Honest placeholder for a tab whose screen lands in a later phase task
- * (Task 4 wires the Library's queue list): the destination is reachable and
+ * Honest placeholder for the one tab whose screen lands in a later phase
+ * task (Task 6 wires Settings): the destination is reachable and
  * labeled now, and says so instead of faking content.
  */
 @Composable

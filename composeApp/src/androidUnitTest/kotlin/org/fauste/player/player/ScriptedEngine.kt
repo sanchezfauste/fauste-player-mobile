@@ -48,6 +48,7 @@ class ScriptedEngine(
     val setVolumes = CopyOnWriteArrayList<Float>()
     val setNextCalls = CopyOnWriteArrayList<ULong>()
     val previousCalls = AtomicInteger(0)
+    val enqueueCalls = CopyOnWriteArrayList<Track>()
 
     /** Thrown by [play] while non-null — injects [FausteException.Busy] etc. */
     @Volatile
@@ -60,6 +61,10 @@ class ScriptedEngine(
     /** Thrown by [seek] while non-null (the seek is then NOT applied). */
     @Volatile
     var seekError: Exception? = null
+
+    /** Thrown by [setNext] while non-null (the arm is then NOT accepted). */
+    @Volatile
+    var setNextError: Exception? = null
 
     override fun getState(): EngineState = state.value
 
@@ -95,6 +100,7 @@ class ScriptedEngine(
 
     override fun setNext(entryId: ULong) {
         setNextCalls.add(entryId)
+        setNextError?.let { throw it }
     }
 
     override fun previous() {
@@ -103,7 +109,25 @@ class ScriptedEngine(
 
     override fun stop() = error("stop is not scripted in this double")
 
-    override fun enqueue(track: Track) = error("enqueue is not scripted in this double")
+    /**
+     * Records and APPLIES the enqueue: appends a [PlaylistEntry] with the
+     * next minted id, mirroring the real conductor's apply (the id exists
+     * once the insert lands — the [QueueManager] confirm loop reads it back
+     * immediately). The title follows the model's enqueue contract — the
+     * FILE STEM, not the Track's blank title field (ffi.rs `enqueue`) —
+     * so row-title assertions see what production would show.
+     */
+    override fun enqueue(track: Track) {
+        enqueueCalls.add(track)
+        val entry =
+            PlaylistEntry(
+                id = nextEnqueueId.incrementAndGet().toULong(),
+                path = track.path,
+                title = fileStem(track.path),
+                duration = track.duration,
+            )
+        playlist.value = playlist.value + entry
+    }
 
     override fun removeEntry(entryId: ULong) = error("removeEntry is not scripted in this double")
 
@@ -117,6 +141,11 @@ class ScriptedEngine(
     override fun getAvailableBackends(): List<BackendInfo> = error("getAvailableBackends is not scripted in this double")
 
     override fun remoteStatus(): RemoteInfo = error("remoteStatus is not scripted in this double")
+
+    private val nextEnqueueId = AtomicInteger(0)
+
+    /** The model's stem-derived title: last path segment without extension. */
+    private fun fileStem(path: String): String = path.substringAfterLast('/').substringBeforeLast('.')
 }
 
 /** Test fixture: an FFI snapshot with the defaults a fresh engine reports. */
@@ -135,3 +164,15 @@ internal fun track(
     path: String = "/music/one.flac",
     duration: Double = 0.0,
 ): Track = Track(path, title, artist, duration, 48_000u, 2u)
+
+/**
+ * Test fixture: a queue row as the FFI's boot refresh would read it. The
+ * id is explicit — the Phase-3 rule: a row's identity is the playlist
+ * flow's id, never the enqueue call's returned one.
+ */
+internal fun playlistEntry(
+    id: ULong,
+    title: String = "Track $id",
+    path: String = "/music/$id.flac",
+    duration: Double = 0.0,
+): PlaylistEntry = PlaylistEntry(id, path, title, duration)
