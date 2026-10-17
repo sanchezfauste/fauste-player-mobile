@@ -65,8 +65,10 @@ class SettingsViewModelTest {
 
     @After
     fun tearDown() {
-        controller.close()
-        remote.close()
+        // The pure constant-lock test never builds the pipeline, so the
+        // doubles may be uninitialized; only close what was constructed.
+        if (::controller.isInitialized) controller.close()
+        if (::remote.isInitialized) remote.close()
         Dispatchers.resetMain()
     }
 
@@ -180,6 +182,26 @@ class SettingsViewModelTest {
     // ------------------------------------------------------------------
     // THE VOLUME THROTTLE (the shape proven in PlayerViewModelTest)
     // ------------------------------------------------------------------
+
+    @Test
+    fun volumeThrottleConstantsStayLockedToPlayerViewModels() {
+        // SettingsViewModel duplicates PlayerViewModel's throttle shape
+        // with its own per-companion constants; the duplication's stated
+        // contract is that the mirrored values stay in lockstep — this is
+        // the lock. A drift in either companion fails here, loudly.
+        assertEquals(
+            PlayerViewModel.DRAG_COMMIT_DEBOUNCE_MILLIS,
+            SettingsViewModel.DRAG_COMMIT_DEBOUNCE_MILLIS,
+        )
+        assertEquals(
+            PlayerViewModel.VOLUME_SETTLE_TIMEOUT_MILLIS,
+            SettingsViewModel.VOLUME_SETTLE_TIMEOUT_MILLIS,
+        )
+        assertEquals(
+            PlayerViewModel.VOLUME_SETTLE_TOLERANCE,
+            SettingsViewModel.VOLUME_SETTLE_TOLERANCE,
+        )
+    }
 
     @Test
     fun aContinuousVolumeDragFloodsNothingAndCommitsExactlyOnceAtDragStop() {
