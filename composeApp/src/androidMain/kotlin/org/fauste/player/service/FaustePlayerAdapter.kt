@@ -9,9 +9,12 @@ import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.util.UnstableApi
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.fauste.player.player.PlayerController
 import org.fauste.player.player.QueueManager
 
@@ -19,7 +22,7 @@ import org.fauste.player.player.QueueManager
  * THE BRIDGE'S MEDIA3 HALF (Task 6): a [SimpleBasePlayer] adapter over
  * the state layer, built for [PlaybackService]'s [MediaSession].
  *
- * DESIGN (the ruling: the service must not depend on any ViewModel —
+ * DESIGN (the ruling: the service must not depend on any ViewModel –
  * they are UI-scoped and die with the screen): the adapter takes the
  * Koin graph's own [PlayerController] + [QueueManager] and nothing
  * else. A collector in the service's background [scope] runs the pure
@@ -32,6 +35,25 @@ import org.fauste.player.player.QueueManager
  * reached from the main thread: commands are launched into the same
  * background scope, whose dispatcher the state layer already uses for
  * its engine calls.
+ *
+ * THE PUBLISH HOP (the Task-6 review's Critical finding, closed):
+ * [SimpleBasePlayer.invalidateState] calls
+ * `verifyApplicationThreadAndInitState()`, which THROWS off the
+ * application looper (verified in the media3 1.11.1 sources) — and a
+ * StateFlow emits its current value the instant collection starts, so
+ * a collector calling it from the background scope crashed the app
+ * within milliseconds of the service's onCreate on a real device (the
+ * Robolectric lane never saw it: the test thread IS the main looper
+ * there). The collection stays on the background scope — the engine
+ * reads it drives must stay off-main — but the PUBLISH (the volatile
+ * write + the invalidateState notification) hops through
+ * [publishDispatcher], whose production default is
+ * [Dispatchers.Main.immediate]: every snapshot reaches media3 on the
+ * application looper, which is the only thread where
+ * invalidateState is legal. The default FORCES main-ness in
+ * production (the service's construction site passes no dispatcher);
+ * only the test lane swaps it, and its KDoc documents the residual
+ * mask that swap leaves.
  *
  * The command contract: `handle*` methods fire the controller command
  * into the scope and return an already-completed future — "applied
@@ -49,6 +71,13 @@ internal class FaustePlayerAdapter(
     private val controller: PlayerController,
     private val queue: QueueManager,
     private val scope: CoroutineScope,
+    /**
+     * The dispatcher the snapshot PUBLISH hops through — [invalidateState]
+     * is only legal on the application looper (the class KDoc's Critical
+     * finding). The default FORCES production main-ness; the Robolectric
+     * lane injects a recording stand-in to pin the hop structurally.
+     */
+    private val publishDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
     /** The last snapshot the collector published; read on the main thread by [getState]. */
     @Volatile
@@ -64,8 +93,16 @@ internal class FaustePlayerAdapter(
             combine(controller.engineState, queue.playlist) { engineState, playlist ->
                 SessionPlaybackSnapshot.from(engineState, playlist)
             }.collect { snapshot ->
-                latest = snapshot
-                invalidateState()
+                // The Critical finding's hop: the collection stays on the
+                // background scope (its engine-driven inputs are off-main
+                // by design), but the PUBLISH — the volatile write and
+                // media3's notification — runs on the publish dispatcher,
+                // the application looper in production, the only thread
+                // where invalidateState is legal (the class KDoc).
+                withContext(publishDispatcher) {
+                    latest = snapshot
+                    invalidateState()
+                }
             }
         }
 

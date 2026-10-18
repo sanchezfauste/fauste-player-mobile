@@ -4,6 +4,7 @@ import android.os.Looper
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -24,6 +25,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.CoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -55,6 +58,31 @@ import kotlin.test.assertTrue
  * firing). Driving the scheduler directly makes the test's end the
  * method's end: [TestWorld.release] closes every loop, and anything
  * still scheduled dies with the test.
+ *
+ * THE MAIN-THREAD PUBLISH CONTRACT (the Task-6 review's Critical
+ * finding): media3 1.11.1's `SimpleBasePlayer.invalidateState()` throws
+ * `IllegalStateException` off the application looper
+ * (`verifyApplicationThreadAndInitState`), and the production collector
+ * ran it from the service's IO scope — a crash within milliseconds of
+ * the service's onCreate on a real device. The fix hops the publish
+ * through an injectable dispatcher whose DEFAULT is
+ * `Dispatchers.Main.immediate` (forced main-ness in production: the
+ * service's construction site passes nothing), and this lane swaps in
+ * [HopRecordingDispatcher] to pin the hop STRUCTURALLY: every
+ * collected snapshot must dispatch through the injected dispatcher
+ * (hops counted) before the state move is visible.
+ *
+ * THE RESIDUAL MASK, disclosed honestly: under Robolectric the test
+ * thread IS the main looper thread, so this lane CANNOT negatively
+ * prove production main-ness — a deleted hop would still pass every
+ * OTHER test here (any inline publish lands on the "main" thread by
+ * test-lane identity). That is exactly why the structural pin exists:
+ * a collector that publishes without dispatching through the injected
+ * dispatcher leaves [HopRecordingDispatcher.hops] at zero and THIS
+ * suite fails, whatever thread it landed on. What the pin cannot see
+ * (a swapped-in dispatcher that is not main in production) is guarded
+ * by the default-only construction site, reviewed by eye, and by the
+ * on-emulator smoke (the report's manual checklist).
  */
 @OptIn(UnstableApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -246,6 +274,40 @@ class FaustePlayerAdapterTest {
         world.release()
     }
 
+    /**
+     * THE MAIN-THREAD PUBLISH HOP, pinned structurally (the class KDoc's
+     * Critical finding): every collected snapshot must dispatch through
+     * the injected publish dispatcher — the production default is
+     * `Dispatchers.Main.immediate`, the only thread where media3's
+     * `invalidateState` is legal. A collector that publishes inline
+     * leaves the hop counter at zero; one that hops but never lands
+     * fails the state assertion underneath (the pipeline's end-to-end
+     * pin).
+     */
+    @Test
+    fun everyPublishedSnapshotHopsThroughTheInjectableMainDispatcher() {
+        val world = adapterWorld(queue = listOf(playlistEntry(id = 1u, path = "/music/one.flac")))
+        world.pump()
+        val hopsAfterBoot = world.publish.hops.get()
+        assertTrue(hopsAfterBoot >= 1, "the collector never dispatched through the publish (main) dispatcher")
+
+        // A fresh state transition must ride the same hop: more
+        // snapshots, more dispatches — and the moved state is visible
+        // through media3's own getters, proving the hop is the live
+        // pipeline, not a boot-time one-off.
+        world.engine.state.value =
+            engineState(
+                status = "playing",
+                duration = 60.0,
+                track = track(title = "Hopped", path = "/music/one.flac"),
+            )
+        world.pump()
+        assertTrue(world.publish.hops.get() > hopsAfterBoot, "a new snapshot did not hop to the publish dispatcher")
+        assertEquals(Player.STATE_READY, world.adapter.playbackState, "the hopped publish never landed")
+        assertTrue(world.adapter.playWhenReady)
+        world.release()
+    }
+
     /** The whole world one test needs: the real state layer over the double, plus the adapter under test. */
     private class TestWorld(
         val engine: ScriptedEngine,
@@ -253,6 +315,7 @@ class FaustePlayerAdapterTest {
         val queue: QueueManager,
         val scope: CoroutineScope,
         val adapter: FaustePlayerAdapter,
+        val publish: HopRecordingDispatcher,
         private val scheduler: TestCoroutineScheduler,
     ) {
         /**
@@ -295,7 +358,30 @@ class FaustePlayerAdapterTest {
         val controller = PlayerController(engine, AppLifecycleHolder(), dispatcher, pollPeriodMillis = 10)
         val queueManager = QueueManager(engine, dispatcher)
         val scope = CoroutineScope(Job() + dispatcher)
-        val adapter = FaustePlayerAdapter(controller, queueManager, scope)
-        return TestWorld(engine, controller, queueManager, scope, adapter, scheduler)
+        val publish = HopRecordingDispatcher(dispatcher)
+        val adapter = FaustePlayerAdapter(controller, queueManager, scope, publish)
+        return TestWorld(engine, controller, queueManager, scope, adapter, publish, scheduler)
+    }
+
+    /**
+     * The structural probe of the main-thread publish contract (the class
+     * KDoc): counts every dispatch handed to it and passes each through
+     * to the delegate. The production default this stand-in replaces is
+     * `Dispatchers.Main.immediate`; a fresh wrapper instance is used per
+     * world so `withContext` always records a hop (no "already on this
+     * dispatcher" shortcut).
+     */
+    private class HopRecordingDispatcher(
+        private val delegate: CoroutineDispatcher,
+    ) : CoroutineDispatcher() {
+        val hops = AtomicInteger()
+
+        override fun dispatch(
+            context: CoroutineContext,
+            block: Runnable,
+        ) {
+            hops.incrementAndGet()
+            delegate.dispatch(context, block)
+        }
     }
 }
