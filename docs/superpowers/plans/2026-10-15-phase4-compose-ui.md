@@ -125,6 +125,21 @@
 
 ---
 
+## Deferred to Phase 5 (from the Phase 4 final review — ordered by the reviewer)
+
+1. **Audio focus** — calls/navigation don't duck/pause; needs a real design decision (native sink vs `AudioFocusRequest` in the service), not a patch.
+2. **Lifecycle-aware collection** — screens use plain `collectAsState()`; with the keep-awake gate the composition recomposes at up to 10 Hz with the screen off while playing. A `collectAsStateWithLifecycle`-equivalent (expect/actual or `lifecycle-runtime-compose` on Android) is the battery work.
+3. **FFI reads that close three disclosed gaps in one change**: `current entry id` (fixes the path-join playing flag + duplicate-path inconsistency Library-vs-session) and `next`/armed (the tap is currently invisible — armed badge).
+4. **System-kill-while-playing restart semantics** — `onStartCommand` re-derive × media3's restart behavior.
+5. **Remote-driven play to a stopped, backgrounded app produces no notification** — needs an engine event surface or a background heartbeat (fights the idling design by construction).
+6. **i18n** — Fluent `.ftl` per spec §4 (en-US source + es-ES), strings currently hardcoded English.
+7. **Restart/backlog polish**: throttle-shape extraction (third copy; constants test-locked), test fixture dedups (ScriptedKoinApp/graph modules/NoopStorage ×3), retry intent for failed backend probes (+ re-probe on resume), `RemoteInfo` error field (FFI change), gradle caching in CI (Robolectric ~100 MB/run), a11y nuances (stopped announced "Paused"; seek announces percentage only), PERMISSION_DENIED copy, import-guard atomicity, settle-timeout test paths, key-type regression pin.
+8. **API-31+ refused-start**: host-pinned (the catch path) but not emulator-drivable (needs a genuine refused state) — on the manual checklist.
+
+## Deferred beyond Phase 5 (recorded, unbudgeted — the spec §9 Phase-4 features whose FFI/analysis surface does not exist yet)
+
+PlaylistsScreen (tabs, drag-reorder), CartwallScreen, WaveformView/MeterView/cues/intro-outro (need waveform + analysis FFI: cover/peaks surfaced — deferred since Phase 2), deep links, RemoteScreen (QR/pairing). The final review verified nothing half-shipped; these need their FFI surface planned as a future phase.
+
 ## Notes for the implementer
 
 - The state layer's KDoc carries the honest limits (volume not observable via SettingsRepository; queue flow stale on HTTP-remote mutations; durations 0.0 until a services layer fills them) — surface those limits in the UI (e.g. duration display falls back to "—" when 0.0), never invent data.
