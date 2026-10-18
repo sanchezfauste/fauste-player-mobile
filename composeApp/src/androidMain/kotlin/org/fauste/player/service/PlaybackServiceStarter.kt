@@ -1,11 +1,13 @@
 package org.fauste.player.service
 
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.fauste.player.player.PlaybackStatus
 import org.fauste.player.player.PlayerController
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * THE APP-SIDE START TRIGGER (Task 6 deliverable 5): watches the
@@ -32,6 +34,10 @@ import org.fauste.player.player.PlayerController
  *   (a killing FGS mid-playback is exactly the case the platform
  *   avoids; a paused notification swiped away already exits through
  *   media3's own dismissal path).
+ * - A REFUSED start is log-and-skip, never fatal (the final review's
+ *   F2 finding): API 31+ can throw
+ *   `ForegroundServiceStartNotAllowedException` from behind this
+ *   trigger (see [startForegroundServiceSafely] for the reasoning).
  *
  * The constructor resolves nothing: whoever builds it owns the
  * threading. FausteApplication arms it inside its application scope
@@ -52,8 +58,47 @@ internal class PlaybackServiceStarter(
                 .distinctUntilChanged()
                 .collect { status ->
                     if (serviceTriggerFor(status) == ServiceTrigger.StartForeground) {
-                        startPlaybackService()
+                        startForegroundServiceSafely()
                     }
                 }
         }
+
+    /**
+     * THE FINAL-REVIEW F2 GUARD: a refused foreground start is
+     * log-and-skip, never process-fatal. This trigger fires on every
+     * distinct Playing phase — including a remote-driven pause → play
+     * while backgrounded, the exact path the keep-awake gate holds the
+     * poll open for — and on API 31+ a start landing outside an
+     * FGS-start-allowed state makes `startForegroundService` throw
+     * `ForegroundServiceStartNotAllowedException` (an
+     * [IllegalStateException]); the app scope's SupervisorJob does NOT
+     * swallow it, so unguarded it kills the process mid-playback.
+     * Skipping is enough — mirroring the stop path's own log-and-exit
+     * hardening choice: media3 re-promotes a RUNNING service on its
+     * own, and the next foregrounded play re-arms this trigger, so a
+     * skipped start costs at most one deferred notification, never
+     * playback.
+     *
+     * [CancellationException] is rethrown FIRST: on the JVM it IS an
+     * IllegalStateException (java.util.concurrent.CancellationException
+     * extends it), so the guard below must never swallow a cancellation.
+     */
+    private fun startForegroundServiceSafely() {
+        try {
+            startPlaybackService()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IllegalStateException) {
+            Log.w(
+                LOG_TAG,
+                "startForegroundService refused (API 31+ start-not-allowed?) — skipping this start; the next distinct Playing phase re-arms",
+                e,
+            )
+        }
+    }
+
+    private companion object {
+        /** The trigger's logcat tag (the refusal guard's one honest log). */
+        const val LOG_TAG = "FaustePlaybackStarter"
+    }
 }

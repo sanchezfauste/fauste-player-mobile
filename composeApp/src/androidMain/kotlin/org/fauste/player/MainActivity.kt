@@ -94,11 +94,13 @@ class MainActivity : ComponentActivity() {
     /**
      * The POST_NOTIFICATIONS runtime request (API 33+, Task 6). Honest
      * degradation, deliberately nothing more: the callback does nothing
-     * with the answer — a denial means no notification while playback
-     * (native, unaffected) continues; the media-session notification is
-     * exempt from the permission by the platform's own rules anyway
-     * (media3's MediaNotificationManager documents the exemption), so
-     * the request mostly serves OEM launchers that ignore it. Asked
+     * with the answer — a denial means no drawer notification while
+     * playback and the foreground service run on unaffected (the
+     * verified reality on the API 34 emulator: the earlier "the
+     * media-session notification is exempt by the platform's own
+     * rules" claim did not hold there — the session still registers
+     * with System UI's MediaSessionStack, so media controls may
+     * surface, but the drawer notification does not appear). Asked
      * once per process: Android's own denial memory ("don't ask
      * again") suppresses re-asking, so a per-process ask cannot nag.
      */

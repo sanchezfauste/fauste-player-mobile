@@ -24,8 +24,9 @@
          is the API 26 base requirement; FOREGROUND_SERVICE_MEDIA_PLAYBACK is
          the API 34 type requirement for a mediaPlayback-typed service.
          POST_NOTIFICATIONS (API 33+) is requested at runtime in MainActivity —
-         with the honest degradation documented there; the media-session
-         notification itself is exempt from it by the platform's rules. -->
+         with the honest degradation documented there: a denial hides the
+         drawer notification only (verified on the API 34 emulator); playback
+         and this service run on unaffected. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

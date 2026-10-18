@@ -49,10 +49,13 @@ import kotlin.coroutines.cancellation.CancellationException
  *   playWhenReady=true over a READY state.
  * - **Paused → alive, notification kept** (Ruling 5, like every music
  *   player). media3 posts the paused notification and steps the service
- *   OUT of foreground while the service keeps running; the
- *   media-session notification is exempt from POST_NOTIFICATIONS by the
- *   platform's own rules, so a denial only ever hides it on OEM launchers
- *   that ignore the exemption — playback is unaffected either way.
+ *   OUT of foreground while the service keeps running; a
+ *   POST_NOTIFICATIONS denial hides the drawer notification — the
+ *   VERIFIED reality on the API 34 emulator (the earlier "platform
+ *   exemption" claim did not hold there and was struck): the session
+ *   itself still registers with System UI's MediaSessionStack, so
+ *   media controls may still surface, but the drawer notification
+ *   does not. The service and playback run on unaffected either way.
  * - **Stop → exit, safely.** The engine's status (paused-by-notification is NOT
  *   this) falling to stopped is observed in
  *   [onUpdateNotificationAsync] — media3's single notification funnel —
@@ -121,6 +124,16 @@ class PlaybackService : MediaSessionService() {
     @Volatile
     private var controller: PlayerController? = null
 
+    /**
+     * THE GATE-LEAK RACE GUARD (the final review's folded finding):
+     * `Service` contexts have no `isDestroyed()` — that is an
+     * Activity-only API (verified against the android.jar) — so this is
+     * ours, set FIRST in [onDestroy] and checked at the top of the
+     * session-build runnable. Both run on the main looper, so looper
+     * ordering (not volatile memory) is what makes the flag sound.
+     */
+    private var isDestroyed = false
+
     override fun onCreate() {
         super.onCreate()
 
@@ -158,6 +171,14 @@ class PlaybackService : MediaSessionService() {
                 // access to the application looper, and MediaSession is
                 // built on that thread.
                 mainHandler.post {
+                    // The gate-leak race guard (isDestroyed's KDoc): if
+                    // onDestroy ran between this post being queued and
+                    // executed, building the session here would re-set
+                    // setPlaybackServiceActive(true) AFTER onDestroy's
+                    // false — the poll would never idle again for the
+                    // rest of the process lifetime. A dead service gets
+                    // nothing.
+                    if (isDestroyed) return@post
                     try {
                         val sessionAdapter = FaustePlayerAdapter(resolvedController, queue, scope)
                         adapter = sessionAdapter
@@ -251,6 +272,7 @@ class PlaybackService : MediaSessionService() {
         }
 
     override fun onDestroy() {
+        isDestroyed = true
         // The keep-awake gate's belt-and-braces off: every exit funnels
         // through here (the stop dance's stopSelf, the system's own
         // kills), and a gate left open would keep the controller's poll
@@ -356,12 +378,29 @@ class PlaybackService : MediaSessionService() {
             }.build()
     }
 
-    /** Tapping the notification opens the app — the only activity there is. */
-    private fun mainActivityIntent(): PendingIntent =
+    /**
+     * Tapping the notification opens the app — the only activity there
+     * is. `internal` for the host-lane pin: the suite reads the saved
+     * intent back from Robolectric's PendingIntent shadow.
+     */
+    internal fun mainActivityIntent(): PendingIntent =
         PendingIntent.getActivity(
             this,
             0,
-            Intent(this, MainActivity::class.java),
+            Intent(this, MainActivity::class.java).apply {
+                // Reuse the live instance, don't stack a new one per tap
+                // (the final review's F1 finding): MainActivity is
+                // deliberately `standard` (no launchMode — flags are the
+                // less invasive fix), so a FLAG-less content intent would
+                // push a NEW instance every time the notification is
+                // tapped while a backgrounded-but-alive activity exists,
+                // and the new.onStart → old.onStop lifecycle order would
+                // leave the app-lifecycle holder reading Background while
+                // an activity is visible, corrupting the poll-idling
+                // signal. CLEAR_TOP | SINGLE_TOP — the standard music-app
+                // pattern — routes each tap to the EXISTING instance.
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            },
             PendingIntent.FLAG_IMMUTABLE,
         )
 

@@ -13,6 +13,9 @@ import org.fauste.player.player.PlayerController
 import org.fauste.player.player.ScriptedEngine
 import org.fauste.player.player.engineState
 import org.fauste.player.player.track
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -33,7 +36,16 @@ import kotlin.test.assertEquals
  * TRIGGERING contract, not Android's service machinery (the manifest
  * and the real startForegroundService are the report's manual-
  * verification checklist).
+ *
+ * The suite runs under Robolectric (the final-review wave's lane
+ * change): the trigger's refusal guard logs through android.util.Log,
+ * which the plain JVM lane cannot shadow — and the guard test below
+ * drives exactly that catch path with a scripted start function. The
+ * two triggering tests are untouched by the lane (no Android API
+ * before the guard existed; the scheduler drives them identically).
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
 class PlaybackServiceStarterTest {
     @Test
     fun playStartsTheForegroundServiceOncePerDistinctPlayingPhase() =
@@ -105,5 +117,67 @@ class PlaybackServiceStarterTest {
 
             controller.close()
             scope.cancel()
+        }
+
+    /**
+     * THE FINAL-REVIEW F2 GUARD: a refused foreground start must be
+     * log-and-skip, never process-fatal. The refusal the review named:
+     * the trigger fires on every distinct Playing phase — including a
+     * remote-driven pause → play while backgrounded — and on API 31+
+     * `startForegroundService` throws
+     * `ForegroundServiceStartNotAllowedException` (an
+     * [IllegalStateException]) when the process is not in an
+     * FGS-start-allowed state; the app scope's SupervisorJob does NOT
+     * swallow it, so unguarded it kills the process mid-playback.
+     *
+     * The scripted start stands in for the platform call and throws the
+     * ISE on the first distinct Playing phase; the pin: the collector
+     * SURVIVES the refusal (the next distinct phase re-arms the start —
+     * exactly the documented reasoning: media3 re-promotes a running
+     * service on its own, and the next foregrounded play re-arms).
+     */
+    @Test
+    fun aRefusedForegroundStartIsSkippedAndTheNextPlayingPhaseReArms() =
+        runTest {
+            val engine = ScriptedEngine(engineState(status = "stopped"))
+            val controller = PlayerController(engine, AppLifecycleHolder(), StandardTestDispatcher(testScheduler), pollPeriodMillis = 10)
+            val attempts = AtomicInteger(0)
+            val scope = CoroutineScope(Job() + StandardTestDispatcher(testScheduler))
+
+            PlaybackServiceStarter(controller, scope) {
+                if (attempts.incrementAndGet() == 1) {
+                    throw IllegalStateException("ForegroundServiceStartNotAllowedException: the scripted refusal")
+                }
+            }
+
+            // The teardown rides in finally: on ANY failure the controller's
+            // infinite poll loop must still be closed before the method ends —
+            // a leaked loop keeps the shared scheduler from ever idling and
+            // runTest's completion advance spins forever (the Task-6 report's
+            // documented Robolectric trap, hit here by a RED assertion).
+            try {
+                // The first distinct Playing phase: the start is attempted and REFUSED.
+                engine.state.value = engineState(status = "playing", position = 10.0, track = track(path = "/music/a.flac"))
+                advanceTimeBy(20)
+                runCurrent()
+                assertEquals(1, attempts.get(), "the first Playing phase must have attempted the refused start")
+
+                // Pause then play — the refusal must not have killed the collector:
+                // a NEW distinct phase must fire the trigger again.
+                engine.state.value = engineState(status = "paused", position = 10.0, track = track(path = "/music/a.flac"))
+                advanceTimeBy(20)
+                runCurrent()
+                engine.state.value = engineState(status = "playing", position = 12.0, track = track(path = "/music/a.flac"))
+                advanceTimeBy(20)
+                runCurrent()
+                assertEquals(
+                    2,
+                    attempts.get(),
+                    "a refused start is log-and-skip, not fatal — the next distinct Playing phase re-arms",
+                )
+            } finally {
+                controller.close()
+                scope.cancel()
+            }
         }
 }
