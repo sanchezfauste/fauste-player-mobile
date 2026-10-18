@@ -12,8 +12,8 @@ import org.fauste.player.player.CommandResult
 import org.fauste.player.player.QueueManager
 import org.fauste.player.repository.MediaRepository
 import org.fauste.player.repository.PlaylistRepository
+import org.fauste.player.rust.EngineState
 import org.fauste.player.rust.PlaylistEntry
-import org.fauste.player.rust.Track
 
 /**
  * The Library screen's UDF half, mirroring [PlayerViewModel]: state down
@@ -35,9 +35,10 @@ import org.fauste.player.rust.Track
  * WITHOUT touching the transport — what is on air plays to its end and
  * the engine then starts the armed row; a stopped player stays stopped,
  * so a tap-while-stopped is silent from the user's view and the row UI
- * must not promise play-now. The screen therefore renders no "playing
- * next" affordance either — the FFI carries no next-read to feed one
- * (a Phase-5 candidate).
+ * must not promise play-now. Since Phase 5 the FFI carries the armed id
+ * (`armed_entry_id`), so the armed row now shows the "UP NEXT" badge
+ * (TrackRow) — the arm the tap made is visible, still without any
+ * play-now promise.
  *
  * The search filter is CLIENT-SIDE by design (documented per the plan):
  * the queue is small — a screenful — so [visibleRows] filters the mapped
@@ -81,7 +82,7 @@ class LibraryViewModel(
                 lastError,
             ) { playlist, engine, query, import, error ->
                 LibraryUiState(
-                    rows = visibleRows(playlist, engine.currentTrack, query),
+                    rows = visibleRows(playlist, engine, query),
                     queueEntryCount = playlist.size,
                     query = query,
                     import = import,
@@ -184,24 +185,34 @@ class LibraryViewModel(
 
         /**
          * The pipeline's pure row mapping + filter: playlist rows in queue
-         * order, [LibraryRow.isPlaying] on the engine's current track
-         * (see [LibraryRow]'s path-join honest limit), blank titles as the
-         * em dash marker (PlayerUiState.trackTitle's convention), and the
-         * trimmed, case-insensitive title match on a non-blank [query].
+         * order, [LibraryRow.isPlaying] by the engine's on-air ENTRY id
+         * (the id-join — duplicate paths no longer each read as current;
+         * the documented path fallback covers only the id-absent shape),
+         * [LibraryRow.isArmed] by the engine's armed id (the arm-only
+         * badge), blank titles as the em dash marker
+         * (PlayerUiState.trackTitle's convention), and the trimmed,
+         * case-insensitive title match on a non-blank [query].
          */
         internal fun visibleRows(
             entries: List<PlaylistEntry>,
-            currentTrack: Track?,
+            engine: EngineState,
             query: String,
         ): List<LibraryRow> {
-            val onAirPath = currentTrack?.path
             val rows =
                 entries.map { entry ->
                     LibraryRow(
                         id = entry.id,
                         title = entry.title.takeIf { it.isNotBlank() } ?: "—",
                         durationSeconds = entry.duration,
-                        isPlaying = entry.path == onAirPath,
+                        isPlaying =
+                            when (val onAir = engine.currentEntryId) {
+                                // The id is authoritative while carried —
+                                // exactly one row can match it, where the
+                                // old path join flagged every duplicate.
+                                null -> entry.path == engine.currentTrack?.path
+                                else -> entry.id == onAir
+                            },
+                        isArmed = engine.armedEntryId?.let { entry.id == it } ?: false,
                     )
                 }
             val needle = query.trim()

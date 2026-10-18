@@ -56,8 +56,9 @@ import org.koin.compose.viewmodel.koinViewModel
  * THE ROW TAP IS ARM-ONLY (the Task-2 carry — see LibraryViewModel's
  * KDoc): a tap arms the row as the player's next without touching the
  * transport, so the row promises nothing it does not do — no play-now
- * affordance, no "armed" badge (the FFI carries no next-read to feed
- * one).
+ * affordance. Since Phase 5 the armed row shows the "UP NEXT" badge
+ * (TrackRow): the arm the tap made, visible without any play-now
+ * promise.
  *
  * Honest limits: a 0.0 duration renders an em dash (TrackRow's rule);
  * an empty queue shows the import call-to-action rather than an empty
@@ -139,6 +140,7 @@ fun LibraryScreen(
                             title = row.title,
                             durationSeconds = row.durationSeconds,
                             isPlaying = row.isPlaying,
+                            isArmed = row.isArmed,
                             onClick = { viewModel.onRowTap(row.id) },
                         )
                     }

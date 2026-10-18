@@ -11,6 +11,7 @@ import org.fauste.player.player.PlayerController
 import org.fauste.player.player.QueueManager
 import org.fauste.player.player.ScriptedEngine
 import org.fauste.player.player.engineState
+import org.fauste.player.player.playlistEntry
 import org.fauste.player.player.track
 import org.fauste.player.repository.PlaylistRepository
 import org.fauste.player.rust.EngineState
@@ -129,6 +130,68 @@ class PlayerViewModelTest {
         assertEquals("—", viewModel.uiState.value.trackTitle)
         assertNull(viewModel.uiState.value.trackArtist)
         assertFalse(viewModel.uiState.value.isPlaying)
+    }
+
+    // ------------------------------------------------------------------
+    // The up-next line: the armed id + the queue flow → the armed title
+    // ------------------------------------------------------------------
+
+    @Test
+    fun theArmedRowsTitleRidesTheStateAsTheUpNextLine() {
+        makeViewModel(engineState(status = "playing", armedEntryId = 2u))
+        engine.playlist.value =
+            listOf(
+                playlistEntry(id = 1u, title = "Nocturne"),
+                playlistEntry(id = 2u, title = "Sea Breeze"),
+            )
+        scheduler.runCurrent()
+
+        assertEquals(
+            "Sea Breeze",
+            viewModel.uiState.value.upNextTitle,
+            "the line resolves the ARMED row's title from the queue flow, by id",
+        )
+    }
+
+    @Test
+    fun anArmedEntryMissingFromTheQueueRendersTheHonestUnknownMarker() {
+        // The remote-mutation staleness corner: the arm points at a row the
+        // queue flow no longer carries — the line stays (the arm is real),
+        // with the unknown marker, never a fake title.
+        makeViewModel(engineState(status = "playing", armedEntryId = 9u))
+        engine.playlist.value = listOf(playlistEntry(id = 1u, title = "Nocturne"))
+        scheduler.runCurrent()
+
+        assertEquals(PlayerViewModel.UNKNOWN_UP_NEXT_TITLE, viewModel.uiState.value.upNextTitle)
+    }
+
+    @Test
+    fun nothingArmedHidesTheUpNextLineEntirely() {
+        makeViewModel(engineState(status = "playing"))
+        engine.playlist.value = listOf(playlistEntry(id = 1u, title = "Nocturne"))
+        scheduler.runCurrent()
+
+        assertNull(
+            viewModel.uiState.value.upNextTitle,
+            "the surface carries no derived-next read: a rendered line without an arm would be a play-now promise",
+        )
+    }
+
+    @Test
+    fun theArmConsumingAtTheAdvanceDropsTheLineWithIt() {
+        makeViewModel(engineState(status = "playing", armedEntryId = 2u))
+        engine.playlist.value = listOf(playlistEntry(id = 2u, title = "Sea Breeze"))
+        scheduler.runCurrent()
+        assertEquals("Sea Breeze", viewModel.uiState.value.upNextTitle)
+
+        // The advance crossed into the armed entry: the engine reports the
+        // arm consumed (the explicit flag cleared, reducer.rs:1322-1325) —
+        // one poll period carries the change, and the line falls.
+        engine.state.value = engine.state.value.copy(armedEntryId = null)
+        scheduler.advanceTimeBy(150)
+        scheduler.runCurrent()
+
+        assertNull(viewModel.uiState.value.upNextTitle)
     }
 
     // ------------------------------------------------------------------

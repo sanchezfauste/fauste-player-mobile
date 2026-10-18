@@ -30,6 +30,8 @@ class PlaybackStateTest {
                 position = 3.25,
                 duration = 12.5,
                 currentTrack = track("tone"),
+                currentEntryId = 101u,
+                armedEntryId = 202u,
                 volume = 0.5f,
                 backend = "null",
             )
@@ -40,24 +42,30 @@ class PlaybackStateTest {
         assertEquals("tone", ui.currentTrack?.title)
         assertEquals("an artist", ui.currentTrack?.artist)
         assertEquals(12.5, ui.currentTrack?.duration)
+        assertEquals(101u, ui.currentEntryId, "the on-air entry id rides the snapshot — the id join's key")
+        assertEquals(202u, ui.armedEntryId, "the armed entry id rides the snapshot — the badge's key")
         assertEquals(0.5f, ui.volume)
         assertEquals("null", ui.backendName)
     }
 
     @Test
-    fun aTracklessEngineStateMapsToANullCurrentTrack() {
+    fun anEngineStateWithNoIdsMapsToNulls() {
         val state =
             EngineState(
                 status = "stopped",
                 position = 0.0,
                 duration = 0.0,
                 currentTrack = null,
+                currentEntryId = null,
+                armedEntryId = null,
                 volume = 1.0f,
                 backend = "null",
             )
         val ui = PlaybackState.fromEngineState(state)
         assertEquals(PlaybackStatus.Stopped, ui.status)
         assertNull(ui.currentTrack)
+        assertNull(ui.currentEntryId, "nothing on air: no id to join")
+        assertNull(ui.armedEntryId, "nothing armed: no arm to badge")
         assertEquals(0.0, ui.position)
         assertEquals(1.0f, ui.volume)
     }
@@ -70,6 +78,8 @@ class PlaybackStateTest {
                 position = 1.0,
                 duration = 2.0,
                 currentTrack = null,
+                currentEntryId = null,
+                armedEntryId = null,
                 volume = 1.0f,
                 backend = "null",
             )

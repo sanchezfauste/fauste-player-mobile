@@ -128,9 +128,17 @@ class ScriptedEngine(
         state.value = state.value.copy(volume = volume)
     }
 
+    /**
+     * Records and APPLIES the arm: a `set_next` the conductor accepts
+     * lands in the model within a bounded window (`next` + the explicit
+     * flag — the FFI's `armed_entry_id` read), so the double reflects it
+     * immediately for the poll loop to pick up, seek's shape. The queue
+     * rows never move (SetNext is not a playlist edit).
+     */
     override fun setNext(entryId: ULong) {
         setNextCalls.add(entryId)
         setNextError?.let { throw it }
+        state.value = state.value.copy(armedEntryId = entryId)
     }
 
     override fun previous() {
@@ -216,9 +224,11 @@ internal fun engineState(
     position: Double = 0.0,
     duration: Double = 0.0,
     track: Track? = null,
+    currentEntryId: ULong? = null,
+    armedEntryId: ULong? = null,
     volume: Float = 1.0f,
     backend: String = "null",
-): EngineState = EngineState(status, position, duration, track, volume, backend)
+): EngineState = EngineState(status, position, duration, track, currentEntryId, armedEntryId, volume, backend)
 
 /** Test fixture: a model-shaped track (the FFI carries the stem-derived title). */
 internal fun track(

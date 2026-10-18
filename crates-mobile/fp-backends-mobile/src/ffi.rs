@@ -77,6 +77,25 @@ pub struct EngineState {
     pub position: f64,
     pub duration: f64,
     pub current_track: Option<Track>,
+    /// The ENTRY the main player holds on air, by id — the model's own
+    /// `PlayerState.current` (`fp-model/src/player.rs:111`), the same
+    /// join key the desktop's table uses for its playing row
+    /// (`p.current == Some(entry.id)`, `fp-app/src/ui/view.rs:386`).
+    /// The queue rows (`get_playlist`) carry the same id, so the join
+    /// is exact where a path join is ambiguous (duplicate paths each
+    /// read as current). `None` while nothing is on air.
+    pub current_entry_id: Option<u64>,
+    /// The ARMED entry, by id: the main player's `next` gated on
+    /// `next_explicit` — only a `set_next` (the desktop's queue tap)
+    /// sets that flag (`fp-model/src/reducer.rs:676-687`), while the
+    /// model's derived next always exists alongside it
+    /// (`refresh_next`, `fp-model/src/reducer.rs:1362-1380`). The arm
+    /// consumes when it fires (the advance into it clears the flag,
+    /// `advance_to`, `fp-model/src/reducer.rs:1322-1325`), `previous`
+    /// re-arms the entry it leaves (`:605-610`), and removing the armed
+    /// entry clears it (`detach_entries`, `:1091-1095`). `None` means
+    /// nothing is armed — never "a derived next exists".
+    pub armed_entry_id: Option<u64>,
     pub volume: f32,
     pub backend: String,
 }
@@ -397,6 +416,11 @@ impl FausteEngine {
     /// engine reported in use (`live.audio_system_in_use`, mirrored from
     /// `EngineEvent::AudioSystemInUse`; `"null"` until the first report,
     /// matching the engine's last-resort fallback).
+    ///
+    /// The id reads (Phase 5): `current_entry_id` is the on-air ENTRY id
+    /// (`player.current`) and `armed_entry_id` the arm (`player.next`
+    /// gated on `next_explicit`) — see the record's field docs for the
+    /// exact reducer semantics each mirrors.
     pub fn get_state(&self) -> EngineState {
         let handle = self.core.handle();
         let model = handle.model.load_full();
@@ -407,6 +431,8 @@ impl FausteEngine {
                 position: 0.0,
                 duration: 0.0,
                 current_track: None,
+                current_entry_id: None,
+                armed_entry_id: None,
                 volume: 1.0,
                 backend: model
                     .live
@@ -434,6 +460,11 @@ impl FausteEngine {
                     .map(|f| u16::try_from(f.channels).unwrap_or(0))
                     .unwrap_or(0),
             });
+        let current_entry_id = player.current.map(|entry| entry.0);
+        let armed_entry_id = player
+            .next
+            .filter(|_| player.next_explicit)
+            .map(|entry| entry.0);
         let position = telemetry
             .players
             .iter()
@@ -445,6 +476,8 @@ impl FausteEngine {
             position,
             duration: current_track.as_ref().map(|t| t.duration).unwrap_or(0.0),
             current_track,
+            current_entry_id,
+            armed_entry_id,
             volume: player.volume,
             backend: model
                 .live

@@ -27,14 +27,23 @@ import org.fauste.player.ui.theme.NocturneColors
 import org.fauste.player.ui.theme.Timecode
 
 /**
- * Stateless queue/library row: track title, duration timecode, and — for
- * the row of the track currently playing — a teal dot in
- * [NocturneColors.Playing]. Pure UI: primitives in, the tap-to-jump
- * intent out; screens own the mapping from their state layer to these
- * parameters.
+ * Stateless queue/library row: track title, duration timecode, a teal dot
+ * in [NocturneColors.Playing] for the row of the track currently on air,
+ * and — since Phase 5 — the "UP NEXT" armed badge in
+ * [NocturneColors.Warning] for the row the user ARMED (the arm-only
+ * queue tap; the FFI now carries the armed id). Pure UI: primitives in,
+ * the tap-to-jump intent out; screens own the mapping from their state
+ * layer to these parameters.
  *
  * Honest limits: a duration of 0.0 means "unknown, not filled by the
  * services layer yet" and renders an em dash — never a fake "00:00".
+ * The armed badge is ARM-ONLY, never a play-now promise: it marks the
+ * row the user chose as the player's next, exactly what the tap did;
+ * the desktop's own table marks its next row with a distinct visual
+ * class the same way (`RowStatus::Next`, `fp-app/src/ui/view.rs:389`).
+ * AMBER (Warning) rather than the teal of the playing dot, so the two
+ * row states never read as the same kind of mark at a glance; a text
+ * label rather than a second dot, so it says what it means.
  *
  * ACCESSIBILITY (the Task-6 pass): the whole row is ONE TalkBack
  * target — `clickable` merges the descendants, so title, duration and
@@ -45,13 +54,15 @@ import org.fauste.player.ui.theme.Timecode
  * "Arm as next track" — the tap arms the row as the player's next
  * WITHOUT starting it (the desktop's row double-click contract — see
  * LibraryViewModel's KDoc), and TalkBack says exactly that, not a
- * generic "double tap to activate".
+ * generic "double tap to activate". The armed badge's description
+ * ("Armed as next track") rides the same merged node.
  */
 @Composable
 fun TrackRow(
     title: String,
     durationSeconds: Double = 0.0,
     isPlaying: Boolean = false,
+    isArmed: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -88,6 +99,20 @@ fun TrackRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(start = 12.dp).weight(1f, fill = true),
         )
+        // The armed badge — the arm the user's tap made, visible at last
+        // (the Phase-4 review's gap): its description rides the merged
+        // row node, announced with title and duration.
+        if (isArmed) {
+            Text(
+                text = "UP NEXT",
+                style = MaterialTheme.typography.labelSmall,
+                color = NocturneColors.Warning,
+                modifier =
+                    Modifier
+                        .padding(start = 12.dp)
+                        .semantics { contentDescription = "Armed as next track" },
+            )
+        }
         Text(
             text = if (durationSeconds > 0.0) formatClock(durationSeconds) else "—",
             style = MaterialTheme.typography.Timecode,

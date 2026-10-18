@@ -5,8 +5,9 @@
 //! the remote reports itself `Listening`, and an enqueue + play reaches the
 //! model (the transport leaves `Stopped`). Phase 3 adds the backend-switch
 //! round trip and the queue read (`PlayerCore::playlist`). Phase 4 adds the
-//! queue jump (`Command::SetNext`, the FFI's `set_next`). Android-only;
-//! zero tests on the host.
+//! queue jump (`Command::SetNext`, the FFI's `set_next`). Phase 5 adds the
+//! entry-id reads the FFI's `get_state` maps (the on-air id and the arm's
+//! consumption at the advance). Android-only; zero tests on the host.
 #![cfg(target_os = "android")]
 
 use std::net::SocketAddr;
@@ -345,6 +346,142 @@ fn the_queue_jump_arms_and_redirects_the_advance_on_device() {
         assert!(
             Instant::now() < deadline,
             "the advance never crossed into the armed entry (current: {current:?})"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    drop(core);
+}
+
+/// Phase 5, on-device: the ENTRY id reads the FFI's `get_state` maps —
+/// the on-air id (`player.current`, `fp-model/src/player.rs:111`) and
+/// the arm (`player.next` gated on `next_explicit`) — round-trip through
+/// the real engine on the device. What this pins beyond the Phase-4
+/// jump test above is THE ID JOIN: the queue read's row ids
+/// (`PlayerCore::playlist`, what `get_playlist` maps) are the SAME ids
+/// as the on-air and armed entries — the exact join the mobile's
+/// playing flag, armed badge and session index now do — and the arm
+/// CONSUMES at the advance: once the advance crosses into the armed
+/// entry, the explicit flag clears (`advance_to`,
+/// `fp-model/src/reducer.rs:1322-1325`), so the armed read maps back to
+/// None (the gate is the flag alone; the derived next is a separate
+/// fact, never an arm).
+#[test]
+fn the_entry_id_reads_round_trip_on_device() {
+    let (data, cache) = temp_dirs("entry-ids");
+    let core = PlayerCore::new(data.clone(), cache).expect("core construction on-device");
+    let core_data = data;
+
+    let (player, playlist) = {
+        let model = core.handle().model.load();
+        let player = model.players.first().expect("no players in the state");
+        (player.id, player.playlist)
+    };
+    for (name, samples) in [
+        ("alpha.wav", 44_100),  // ~1 s: the advance lands in budget
+        ("beta.wav", 441_000),  // ~10 s
+        ("gamma.wav", 441_000), // ~10 s
+    ] {
+        let wav = tiny_wav_as(&core_data, name, samples);
+        assert!(core.handle().send(Command::InsertPaths {
+            playlist,
+            index: usize::MAX, // the reducer clamps: append
+            paths: vec![wav],
+        }));
+    }
+    let entries: Vec<EntryId> = {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let model = core.handle().model.load();
+            let ids: Vec<EntryId> = model
+                .playlists
+                .get(playlist)
+                .map(|list| list.entries.iter().map(|e| e.id).collect())
+                .unwrap_or_default();
+            if ids.len() == 3 {
+                break ids;
+            }
+            assert!(Instant::now() < deadline, "the queue never filled");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    };
+
+    // THE ID JOIN, on-device: the queue read's rows carry the model's
+    // entry ids — the join the Kotlin playing flag does. Stopped: no
+    // on-air id, and the arm must not report the derived next either.
+    let (stopped_current, stopped_explicit) = {
+        let model = core.handle().model.load();
+        let p = model.players.first().expect("the main player");
+        (p.current, p.next_explicit)
+    };
+    assert_eq!(stopped_current, None, "stopped: nothing on air");
+    assert!(
+        !stopped_explicit,
+        "stopped: the queue-head next the idle player picked is DERIVED, not an arm"
+    );
+
+    assert!(core.handle().send(Command::Play(player)));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let model = core.handle().model.load();
+        let p = model.players.first().expect("the main player");
+        if p.current == Some(entries[0]) {
+            let rows: Vec<EntryId> = core.playlist().iter().map(|row| row.entry).collect();
+            assert_eq!(
+                rows, entries,
+                "the queue read's row ids are the model's entry ids — the id join"
+            );
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the player never started the queue head (current: {:?})",
+            p.current
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    // The arm lands (next + the explicit flag — no natural advance sets
+    // it), and the armed id is the queue row's id.
+    assert!(core.handle().send(Command::SetNext(player, entries[2])));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let model = core.handle().model.load();
+        let p = model.players.first().expect("the main player");
+        if p.next == Some(entries[2]) && p.next_explicit {
+            let rows: Vec<EntryId> = core.playlist().iter().map(|row| row.entry).collect();
+            assert_eq!(rows[2], entries[2], "the armed id joins its queue row");
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the arm never landed (next: {:?})",
+            p.next
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    // The boundary: the advance crosses into the armed entry and the
+    // arm CONSUMES — the explicit flag clears, which is the ONLY fact
+    // the FFI's armed read gates on (`next.filter(|_| next_explicit)`),
+    // so it maps back to None here. gamma is the queue's TAIL, so the
+    // re-derived next may be None too (`next_playable_after` finds
+    // nothing) — the read stays None either way, and the distinction
+    // "a derived next exists but is not an arm" is already pinned by
+    // the pre-play check above (the queue-head pick: next Some,
+    // explicit false, armed None).
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let model = core.handle().model.load();
+        let p = model.players.first().expect("the main player");
+        if p.current == Some(entries[2]) && !p.next_explicit {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the arm never consumed at the boundary (current: {:?}, explicit: {})",
+            p.current,
+            p.next_explicit
         );
         std::thread::sleep(Duration::from_millis(20));
     }

@@ -106,6 +106,18 @@ fn wait_until(what: &str, mut probe: impl FnMut() -> bool) {
     }
 }
 
+/// The boundary-wait shape: like [wait_until], but with the budget the
+/// real-time crossings need (the `set_next` tests' 5 s — a ~1 s entry
+/// must PLAY TO ITS END before the advance lands, and the full suite
+/// runs in parallel, so a 2 s budget races the machine's load).
+fn wait_boundary(what: &str, mut probe: impl FnMut() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !probe() {
+        assert!(Instant::now() < deadline, "timeout waiting for {what}");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
 /// The address the engine's HTTP remote is listening on, once it is up.
 fn wait_remote_listening(engine: &FausteEngine) -> String {
     let deadline = Instant::now() + Duration::from_secs(2);
@@ -576,6 +588,209 @@ fn previous_is_a_queued_transport_command() {
     engine.previous().expect("previous queues while playing");
     // An empty history makes it a model no-op: the player keeps playing.
     assert_eq!(wait_status(&engine, "playing"), "playing");
+}
+
+/// The on-air ENTRY id read: `get_state().current_entry_id` is the id of
+/// the entry the main player holds on air — the model's own
+/// `PlayerState.current` (`fp-model/src/player.rs:111`), the exact join
+/// key the desktop's table uses for its playing row
+/// (`fp-app/src/ui/view.rs:386`, `p.current == Some(entry.id)`). The
+/// queue rows carry the SAME id (`PlayerCore::playlist`), so the join is
+/// exact where the previous path join was ambiguous (duplicate paths
+/// each read as current). None while nothing is on air — including a
+/// stopped player with a queue, where a path join over the derived
+/// next would have lied.
+#[test]
+fn get_state_reports_the_on_air_entry_id() {
+    let dirs = TempDirs::new("current-id");
+    let engine = engine(&dirs);
+    assert_eq!(
+        engine.get_state().current_entry_id,
+        None,
+        "a fresh, stopped player has no entry on air"
+    );
+
+    for name in ["alpha.wav", "beta.wav"] {
+        let wav = tiny_wav_as(&dirs.data, name, 441_000); // ~10 s: a stable current
+        engine.enqueue(bare_track(wav)).expect("enqueue");
+    }
+    wait_until("two entries queued", || engine.get_playlist().len() == 2);
+    let alpha = engine
+        .get_playlist()
+        .iter()
+        .find(|row| row.path.ends_with("alpha.wav"))
+        .expect("alpha is queued")
+        .id;
+    let beta = engine
+        .get_playlist()
+        .iter()
+        .find(|row| row.path.ends_with("beta.wav"))
+        .expect("beta is queued")
+        .id;
+    assert_ne!(alpha, beta, "distinct entries have distinct ids");
+
+    engine.play().expect("play");
+    assert_eq!(wait_status(&engine, "playing"), "playing");
+    wait_until(
+        "the on-air id is the queue row's id (the id-join the UI does)",
+        || engine.get_state().current_entry_id == Some(alpha),
+    );
+
+    engine.stop().expect("stop");
+    assert_eq!(wait_status(&engine, "stopped"), "stopped");
+    wait_until(
+        "stop clears the on-air id (`stop_player`, reducer.rs:1352)",
+        || engine.get_state().current_entry_id.is_none(),
+    );
+
+    drop(engine);
+}
+
+/// The armed read: `get_state().armed_entry_id` is the main player's
+/// `next` GATED ON `next_explicit` — the model's `next` alone is
+/// ambiguous (a derived next always exists: `refresh_next` /
+/// `fill_empty_next`, `fp-model/src/reducer.rs:1362-1380`), and it is
+/// the explicit bit that separates a tap's arm from natural advance
+/// (the same pair the Phase-4 emulator test polls,
+/// `tests/engine_smoke.rs:320`). So the arm consumes when it fires:
+/// crossing into the armed entry re-derives the next and clears the
+/// flag (`advance_to`, `fp-model/src/reducer.rs:1322-1325`), and the
+/// read goes back to None while the derived next keeps existing.
+#[test]
+fn armed_entry_id_reports_only_an_explicit_arm_and_consumes_on_advance() {
+    let dirs = TempDirs::new("armed-id");
+    let engine = engine(&dirs);
+    let alpha = tiny_wav_as(&dirs.data, "alpha.wav", 44_100); // ~1 s
+    let beta = tiny_wav_as(&dirs.data, "beta.wav", 441_000); // ~10 s
+    let gamma = tiny_wav_as(&dirs.data, "gamma.wav", 441_000); // ~10 s
+    for wav in [&alpha, &beta, &gamma] {
+        engine.enqueue(bare_track(wav.clone())).expect("enqueue");
+    }
+    wait_until("three entries queued", || engine.get_playlist().len() == 3);
+
+    // A derived next exists already (the idle player picked the queue
+    // head) — the read must NOT report it as an arm.
+    assert_eq!(
+        engine.get_state().armed_entry_id,
+        None,
+        "the derived next is not an arm: only next_explicit arms"
+    );
+
+    let gamma_id = engine
+        .get_playlist()
+        .iter()
+        .find(|row| row.path.ends_with("gamma.wav"))
+        .expect("gamma is queued")
+        .id;
+    engine.play().expect("play");
+    assert_eq!(wait_status(&engine, "playing"), "playing");
+    wait_until("the natural chain still reports no arm", || {
+        let state = engine.get_state();
+        state.current_entry_id.is_some() && state.armed_entry_id.is_none()
+    });
+
+    engine.set_next(gamma_id).expect("set_next");
+    wait_until("the arm lands: next_explicit gates the read", || {
+        engine.get_state().armed_entry_id == Some(gamma_id)
+    });
+
+    // The boundary: alpha ends (~1 s) and the advance crosses into the
+    // ARMED gamma — the arm is consumed, the next re-derived.
+    wait_boundary("the advance crosses into the armed entry", || {
+        engine.get_state().current_entry_id == Some(gamma_id)
+    });
+    wait_until(
+        "the arm consumes when it fires (advance_to clears next_explicit)",
+        || engine.get_state().armed_entry_id.is_none(),
+    );
+
+    drop(engine);
+}
+
+/// `previous` re-arms the entry it leaves: R24 pops the history, starts
+/// the popped entry and queues the LEFT one as the EXPLICIT next
+/// (`fp-model/src/reducer.rs:605-610`) — so after a Previous from beta
+/// back to alpha, the armed read must point at beta (the entry left),
+/// not at anything derived.
+#[test]
+fn previous_re_arms_the_entry_left_on_air() {
+    let dirs = TempDirs::new("previous-arm");
+    let engine = engine(&dirs);
+    let alpha = tiny_wav_as(&dirs.data, "alpha.wav", 44_100); // ~1 s
+    let beta = tiny_wav_as(&dirs.data, "beta.wav", 441_000); // ~10 s
+    for wav in [&alpha, &beta] {
+        engine.enqueue(bare_track(wav.clone())).expect("enqueue");
+    }
+    wait_until("two entries queued", || engine.get_playlist().len() == 2);
+    let id_of = |suffix: &str| {
+        engine
+            .get_playlist()
+            .iter()
+            .find(|row| row.path.ends_with(suffix))
+            .expect("the entry is queued")
+            .id
+    };
+    let alpha_id = id_of("alpha.wav");
+    let beta_id = id_of("beta.wav");
+
+    engine.play().expect("play");
+    // alpha (~1 s) advances into beta on its own: history now [alpha].
+    wait_boundary("the natural advance reached beta", || {
+        engine.get_state().current_entry_id == Some(beta_id)
+    });
+
+    engine.previous().expect("previous");
+    wait_until(
+        "Previous restarts alpha and arms the LEFT beta (reducer.rs:608-609)",
+        || {
+            let state = engine.get_state();
+            state.current_entry_id == Some(alpha_id) && state.armed_entry_id == Some(beta_id)
+        },
+    );
+
+    drop(engine);
+}
+
+/// Removing the armed entry clears the arm: `detach_entries` replaces a
+/// next pointing at a removed entry with its successor and clears the
+/// explicit flag (`fp-model/src/reducer.rs:1091-1095`, via
+/// `remove_entry`, `fp-model/src/reducer.rs:1171-1190`). The UI's armed
+/// badge must therefore fall off the removed row's id — never point at
+/// a row that no longer exists.
+#[test]
+fn removing_the_armed_entry_clears_the_arm() {
+    let dirs = TempDirs::new("remove-arm");
+    let engine = engine(&dirs);
+    let alpha = tiny_wav_as(&dirs.data, "alpha.wav", 441_000); // ~10 s
+    let beta = tiny_wav_as(&dirs.data, "beta.wav", 441_000); // ~10 s
+    let gamma = tiny_wav_as(&dirs.data, "gamma.wav", 441_000); // ~10 s
+    for wav in [&alpha, &beta, &gamma] {
+        engine.enqueue(bare_track(wav.clone())).expect("enqueue");
+    }
+    wait_until("three entries queued", || engine.get_playlist().len() == 3);
+    let gamma_id = engine
+        .get_playlist()
+        .iter()
+        .find(|row| row.path.ends_with("gamma.wav"))
+        .expect("gamma is queued")
+        .id;
+
+    engine.play().expect("play");
+    assert_eq!(wait_status(&engine, "playing"), "playing");
+    engine.set_next(gamma_id).expect("arm gamma");
+    wait_until("the arm lands before the remove", || {
+        engine.get_state().armed_entry_id == Some(gamma_id)
+    });
+
+    engine
+        .remove_entry(gamma_id)
+        .expect("remove the armed entry");
+    wait_until(
+        "the arm falls off with the removed row (detach_entries clears next_explicit)",
+        || engine.get_state().armed_entry_id.is_none(),
+    );
+
+    drop(engine);
 }
 
 /// `get_available_backends`: the wired set, with availability probed at

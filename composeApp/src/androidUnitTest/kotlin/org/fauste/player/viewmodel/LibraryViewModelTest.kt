@@ -116,7 +116,7 @@ class LibraryViewModelTest {
                     playlistEntry(id = 1u, title = "Nocturne"),
                     playlistEntry(id = 2u, title = "Sea Breeze"),
                 ),
-                currentTrack = null,
+                engineState(status = "stopped"),
                 query = "  OCT ",
             )
 
@@ -131,7 +131,7 @@ class LibraryViewModelTest {
                     playlistEntry(id = 2u, title = "B"),
                     playlistEntry(id = 1u, title = "A"),
                 ),
-                currentTrack = null,
+                engineState(status = "stopped"),
                 query = "   ",
             )
 
@@ -143,12 +143,13 @@ class LibraryViewModelTest {
     // ------------------------------------------------------------------
 
     @Test
-    fun rowsMapThePlaylistAndThePlayingFlagFollowsTheEnginesCurrentTrack() {
+    fun rowsMapThePlaylistAndThePlayingFlagFollowsTheOnAirEntryId() {
         makeViewModel(
             initial =
                 engineState(
                     status = "playing",
                     track = track(path = "/music/breeze.flac", duration = 0.0),
+                    currentEntryId = 12u,
                 ),
             playlist =
                 listOf(
@@ -168,7 +169,92 @@ class LibraryViewModelTest {
         assertEquals(listOf("Nocturne", "Sea Breeze"), state.rows.map { it.title })
         assertEquals(listOf(301.0, 0.0), state.rows.map { it.durationSeconds })
         assertFalse(state.rows[0].isPlaying, "the off-air row is not flagged")
-        assertTrue(state.rows[1].isPlaying, "the current track's row is flagged — by path, the FFI's only shared identity")
+        assertTrue(state.rows[1].isPlaying, "the on-air ENTRY's row is flagged — by id, the desktop's own join key")
+    }
+
+    @Test
+    fun duplicatePathsNoLongerEachReadAsCurrentTheIdJoinDisambiguates() {
+        // THE Phase-5 regression: two rows share one path, the on-air one
+        // is the second — the old path join flagged both; the id join
+        // flags exactly the row the player holds on air.
+        val rows =
+            LibraryViewModel.visibleRows(
+                listOf(
+                    playlistEntry(id = 1u, title = "First copy", path = "/music/b.flac"),
+                    playlistEntry(id = 2u, title = "Second copy", path = "/music/b.flac"),
+                ),
+                engineState(
+                    status = "playing",
+                    track = track(path = "/music/b.flac"),
+                    currentEntryId = 2u,
+                ),
+                query = "",
+            )
+
+        assertEquals(
+            listOf(false, true),
+            rows.map { it.isPlaying },
+            "only the on-air ENTRY's row is flagged, duplicate paths included",
+        )
+    }
+
+    @Test
+    fun theArmedRowCarriesTheArmFlagAndNothingElseDoes() {
+        val rows =
+            LibraryViewModel.visibleRows(
+                listOf(
+                    playlistEntry(id = 1u, title = "Nocturne"),
+                    playlistEntry(id = 2u, title = "Sea Breeze"),
+                    playlistEntry(id = 3u, title = "Drift"),
+                ),
+                engineState(status = "playing", currentEntryId = 1u, armedEntryId = 3u),
+                query = "",
+            )
+
+        assertEquals(
+            listOf(false, false, true),
+            rows.map { it.isArmed },
+            "the ARMED row alone carries the flag — the arm, not the derived next",
+        )
+        assertEquals(listOf(true, false, false), rows.map { it.isPlaying }, "playing and armed stay distinct flags")
+    }
+
+    @Test
+    fun aDerivedNextAloneIsNeverAnArm() {
+        // The FFI's armed id is the model's next GATED on next_explicit —
+        // a derived next (the idle player's queue-head pick) must not
+        // badge any row. The engine snapshot below carries no armed id,
+        // which is exactly what the FFI reports for a derived next.
+        val rows =
+            LibraryViewModel.visibleRows(
+                listOf(playlistEntry(id = 1u, title = "Nocturne")),
+                engineState(status = "stopped"),
+                query = "",
+            )
+
+        assertEquals(listOf(false), rows.map { it.isArmed }, "no armed id in the snapshot: no row is badged")
+    }
+
+    @Test
+    fun whileNoIdIsCarriedThePlayingFlagFallsBackToTheDocumentedPathJoin() {
+        // The id-absent shape: the FFI reports the id only for an on-air
+        // entry, so the path fallback documents the precedence — a total
+        // mapping, never a second guess over an id that already answered.
+        val rows =
+            LibraryViewModel.visibleRows(
+                listOf(
+                    playlistEntry(id = 1u, path = "/music/a.flac"),
+                    playlistEntry(id = 2u, path = "/music/b.flac"),
+                ),
+                engineState(status = "playing", track = track(path = "/music/b.flac")),
+                query = "",
+            )
+
+        assertEquals(
+            listOf(false, true),
+            rows.map { it.isPlaying },
+            "no id carried: the row with the engine's track path is flagged",
+        )
     }
 
     @Test
@@ -230,6 +316,18 @@ class LibraryViewModelTest {
         assertEquals<List<ULong>>(listOf(7u), engine.setNextCalls)
         assertEquals(0, engine.playCalls.get())
         assertNull(viewModel.uiState.value.error)
+        // The arm the tap made is VISIBLE: the double applies the arm
+        // (the conductor would land it within its bounded window); one
+        // poll period carries the armed id into the pipeline, and the
+        // tapped row is badged.
+        scheduler.advanceTimeBy(150)
+        scheduler.runCurrent()
+        assertTrue(
+            viewModel.uiState.value.rows
+                .single()
+                .isArmed,
+            "the tap's arm lands on the row — the Phase-4 invisible-tap gap, closed",
+        )
     }
 
     // ------------------------------------------------------------------

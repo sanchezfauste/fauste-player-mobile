@@ -130,6 +130,7 @@ class LibraryScreenTest {
                 engineState(
                     status = "playing",
                     track = track(path = "/music/breeze.flac", duration = 0.0),
+                    currentEntryId = 22u,
                 ),
             playlist =
                 listOf(
@@ -146,7 +147,8 @@ class LibraryScreenTest {
         // TrackRow's honest-limits duration: 0.0 renders the em dash.
         composeRule.onNodeWithText("05:01").assertExists()
         composeRule.onNodeWithText("—").assertExists()
-        // Exactly the current track's row carries the playing indicator.
+        // Exactly the on-air ENTRY's row carries the playing indicator —
+        // joined by id, the Phase-5 read.
         composeRule.waitUntil(TIMEOUT_MILLIS) {
             composeRule.onAllNodesWithContentDescription("Now playing").fetchSemanticsNodes().isNotEmpty()
         }
@@ -191,7 +193,7 @@ class LibraryScreenTest {
     }
 
     @Test
-    fun aRowTapArmsTheEntryWithoutStartingPlayback() {
+    fun aRowTapArmsTheEntryAndTheBadgeMakesTheArmVisible() {
         makeViewModel(
             initial = engineState(status = "stopped"),
             playlist = listOf(playlistEntry(id = 31u, title = "Armed")),
@@ -201,6 +203,11 @@ class LibraryScreenTest {
         composeRule.waitUntil(TIMEOUT_MILLIS) {
             composeRule.onAllNodesWithText("Armed").fetchSemanticsNodes().isNotEmpty()
         }
+        // Before the tap: no badge — an unbadged row makes no arm claim.
+        composeRule
+            .onAllNodesWithContentDescription("Armed as next track")
+            .fetchSemanticsNodes()
+            .isEmpty()
 
         composeRule.onNodeWithText("Armed").performClick()
 
@@ -213,6 +220,17 @@ class LibraryScreenTest {
         composeRule.waitUntil(TIMEOUT_MILLIS) { engine.setNextCalls.isNotEmpty() }
         assertEquals<List<ULong>>(listOf(31u), engine.setNextCalls)
         assertEquals(0, engine.playCalls.get())
+
+        // THE PHASE-4 GAP, CLOSED END TO END: the tap's arm lands on the
+        // engine (the double applies it; the poll carries the armed id),
+        // and the tapped row now shows the "UP NEXT" badge with its
+        // "Armed as next track" description — the arm visible, still no
+        // play-now promise (the transport never moved).
+        composeRule.waitUntil(TIMEOUT_MILLIS) {
+            composeRule.onAllNodesWithText("UP NEXT").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithContentDescription("Armed as next track").assertExists()
+        assertEquals("stopped", engine.state.value.status, "the badge never promised play-now")
     }
 
     @Test

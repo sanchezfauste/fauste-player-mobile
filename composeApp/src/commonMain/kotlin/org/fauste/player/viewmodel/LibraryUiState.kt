@@ -7,22 +7,33 @@ package org.fauste.player.viewmodel
  * identity comes from the playlist flow, never from an enqueue call's
  * returned id), the row's [title] and [durationSeconds] (0.0 reads as
  * "unknown" and TrackRow renders an em dash — the honest-limits rule),
- * and the [isPlaying] flag.
+ * the [isPlaying] flag and the [isArmed] flag.
  *
- * [isPlaying] follows the ENGINE's current track, not the transport
+ * [isPlaying] follows the ENGINE's on-air entry, not the transport
  * status: the flag marks the row the player holds on air (the desktop's
  * `p.current == Some(entry)`, `fp-app/src/ui/table.rs:860-863`) — also
- * while paused on it. Honest limit: the model knows its current ENTRY,
- * but the FFI's [org.fauste.player.rust.EngineState] exposes only the
- * current TRACK (path, no entry id), so the flag joins on PATH; duplicate
- * paths (the enqueue contract allows them) each read as current. A
- * Phase-5 FFI that reports the current entry id closes this exactly.
+ * while paused on it. Since Phase 5 the FFI carries the on-air ENTRY id
+ * (`current_entry_id`), so the flag joins by ID — the desktop's own
+ * join key (`fp-app/src/ui/view.rs:386`) — and duplicate paths (the
+ * enqueue contract allows them) no longer each read as current. The
+ * documented PATH fallback stays for the id-absent shape (nothing on
+ * air): a total mapping, never a second guess over a queue the id
+ * already answered.
+ *
+ * [isArmed] marks the row the user ARMED as the player's next (the
+ * arm-only row tap — [LibraryViewModel.onRowTap]): the engine's
+ * `armed_entry_id`, which is the model's `next` gated on
+ * `next_explicit` — so the badge never promises play-now and never
+ * marks the model's derived next (the FFI's field doc carries the
+ * exact reducer semantics: the arm consumes when it fires, `previous`
+ * re-arms the entry left, a remove clears it).
  */
 data class LibraryRow(
     val id: ULong,
     val title: String,
     val durationSeconds: Double,
     val isPlaying: Boolean,
+    val isArmed: Boolean = false,
 )
 
 /**

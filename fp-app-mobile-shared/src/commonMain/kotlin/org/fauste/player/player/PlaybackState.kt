@@ -10,12 +10,23 @@ import org.fauste.player.rust.Track
  * FFI grows). [currentTrack] is the FFI's own [Track] record — path,
  * title, artist, duration, sample rate, channels — passed through
  * untouched rather than re-wrapped.
+ *
+ * The ENTRY id reads (Phase 5): [currentEntryId] is the on-air entry's
+ * id and [armedEntryId] the armed entry's — the exact join keys the
+ * desktop's table uses (`p.current == Some(entry.id)` /
+ * `p.next == Some(entry.id)`, `fp-app/src/ui/view.rs:386-389`), now
+ * carried by the FFI so consumers join by id instead of the ambiguous
+ * path (duplicate paths each read as current). `armedEntryId` is the
+ * ARM — the model's `next` gated on `next_explicit`, so `null` never
+ * means "a derived next exists" (see the FFI record's field doc).
  */
 data class PlaybackState(
     val status: PlaybackStatus = PlaybackStatus.Stopped,
     val position: Double = 0.0,
     val duration: Double = 0.0,
     val currentTrack: Track? = null,
+    val currentEntryId: ULong? = null,
+    val armedEntryId: ULong? = null,
     val volume: Float = 1.0f,
     val backendName: String = "",
 ) {
@@ -34,6 +45,8 @@ data class PlaybackState(
                 position = state.position,
                 duration = state.duration,
                 currentTrack = state.currentTrack,
+                currentEntryId = state.currentEntryId,
+                armedEntryId = state.armedEntryId,
                 volume = state.volume,
                 backendName = state.backend,
             )

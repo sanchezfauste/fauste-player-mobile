@@ -19,6 +19,7 @@ import org.fauste.player.player.PlaybackStatus
 import org.fauste.player.player.PlayerController
 import org.fauste.player.player.QueueManager
 import org.fauste.player.repository.PlaylistRepository
+import org.fauste.player.rust.PlaylistEntry
 import kotlin.math.abs
 
 /**
@@ -90,17 +91,21 @@ class PlayerViewModel(
         // The composition pipeline: the plan-mandated mapping runs here, on
         // the command dispatcher (which is also where the lazy state layer
         // first resolves). Eager-started; the VM owns it for its lifetime.
+        // The queue flow joins for the up-next line: the armed id comes from
+        // the engine snapshot, its TITLE from the queue rows.
         viewModelScope.launch(commandDispatcher) {
             combine(
                 controller.value.engineState,
+                repository.value.playlist,
                 pendingSeekPosition,
                 pendingVolume,
                 lastError,
-            ) { engineState, pendingSeek, pendingVolume, error ->
+            ) { engineState, playlist, pendingSeek, pendingVolume, error ->
                 PlayerUiState(
                     playback = PlaybackState.fromEngineState(engineState),
                     pendingSeekPosition = pendingSeek,
                     pendingVolume = pendingVolume,
+                    upNextTitle = upNextTitle(engineState.armedEntryId, playlist),
                     error = error,
                 )
             }.collect { _uiState.value = it }
@@ -233,6 +238,29 @@ class PlayerViewModel(
     companion object {
         /** The trailing debounce: ~200 ms of silence after the last drag tick reads as "drag stopped". */
         const val DRAG_COMMIT_DEBOUNCE_MILLIS: Long = 200
+
+        /**
+         * The up-next line's title (the class KDoc's contract): the ARMED
+         * row's title by id; the em dash while the armed row is not in the
+         * queue flow (the remote-mutation staleness corner — the honest
+         * unknown, never a fake title); null while nothing is armed (the
+         * line hides — the surface carries no derived-next read, so a
+         * rendered line would be a play-now promise).
+         */
+        internal fun upNextTitle(
+            armedEntryId: ULong?,
+            playlist: List<PlaylistEntry>,
+        ): String? =
+            armedEntryId?.let { id ->
+                playlist
+                    .firstOrNull { entry -> entry.id == id }
+                    ?.title
+                    ?.takeIf { it.isNotBlank() }
+                    ?: UNKNOWN_UP_NEXT_TITLE
+            }
+
+        /** The honest unknown marker for an armed row the queue flow cannot place (the em-dash convention). */
+        const val UNKNOWN_UP_NEXT_TITLE: String = "—"
 
         /** How long an accepted seek may take to show in the polled state (mirrors the state layer's bounded confirm window). */
         const val SEEK_SETTLE_TIMEOUT_MILLIS: Long = 2_000

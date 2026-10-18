@@ -109,13 +109,16 @@ class PlayerController(
         MutableStateFlow(
             // The seed mirrors the FFI's own degenerate-state shape (ffi.rs,
             // `get_state`'s no-player branch): stopped, zeroed, full volume,
-            // the "null" fallback backend. The first tick — within one poll
-            // period of construction — replaces it with the real snapshot.
+            // the "null" fallback backend — and no entry on air and nothing
+            // armed. The first tick — within one poll period of construction —
+            // replaces it with the real snapshot.
             EngineState(
                 status = "stopped",
                 position = 0.0,
                 duration = 0.0,
                 currentTrack = null,
+                currentEntryId = null,
+                armedEntryId = null,
                 volume = 1.0f,
                 backend = "null",
             ),

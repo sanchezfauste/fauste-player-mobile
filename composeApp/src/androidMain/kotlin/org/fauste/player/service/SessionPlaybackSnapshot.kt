@@ -60,10 +60,15 @@ data class SessionPlaybackSnapshot(
     /** The whole queue, in order — the session timeline's rows. */
     val queue: List<SessionQueueItem>,
     /**
-     * The on-air row's index in [queue], matched by path (the FFI's
-     * Track record carries no id), or [INDEX_UNSET] while the on-air
-     * path is not in the queue rows — the queue flow's documented
-     * stale-on-remote-mutations corner. Never a guessed row.
+     * The on-air row's index in [queue], resolved by the on-air ENTRY id
+     * first (the FFI carries it since Phase 5 — the exact join the
+     * desktop's table does, `fp-app/src/ui/view.rs:386`), falling back
+     * to the documented PATH match while the id is absent, and
+     * [INDEX_UNSET] while neither places the on-air entry — the queue
+     * flow's documented stale-on-remote-mutations corner. Never a
+     * guessed row. The id join is exact where the path join is
+     * ambiguous: duplicate paths are distinct entries, and only the
+     * row whose id is on air matches.
      *
      * The honest display-layer note (Task 6's review fold-in): the DATA
      * here keeps "never a guessed row", but media3's
@@ -124,7 +129,9 @@ data class SessionPlaybackSnapshot(
          *   guard on an otherwise unreachable corner;
          * - seconds → ms by rounding; 0.0 durations (the FFI's
          *   not-yet-filled shape) → [UNSET_DURATION_MS];
-         * - the on-air row by FIRST path match; missing → [INDEX_UNSET];
+         * - the on-air row by the ENTRY id first, then the documented
+         *   path match while the id is absent; neither places it →
+         *   [INDEX_UNSET];
          * - on-air title/artist from the ENGINE's own track, blanks
          *   read as null.
          */
@@ -152,9 +159,18 @@ data class SessionPlaybackSnapshot(
                 currentArtist = engineState.currentTrack?.artist?.takeIf { it.isNotBlank() },
                 queue = playlist.map { entry -> SessionQueueItem.from(entry) },
                 currentQueueIndex =
-                    currentPath?.let { path ->
-                        playlist.indexOfFirst { entry -> entry.path == path }.takeIf { it >= 0 } ?: INDEX_UNSET
-                    } ?: INDEX_UNSET,
+                    when (val id = engineState.currentEntryId) {
+                        // The id is AUTHORITATIVE while carried: the exact
+                        // join, and honest over a stale queue — an on-air id
+                        // missing from the rows is INDEX_UNSET, never a
+                        // guessed row (a path fallback here could pick a
+                        // duplicate-path row that is NOT the on-air entry).
+                        null ->
+                            currentPath?.let { path ->
+                                playlist.indexOfFirst { entry -> entry.path == path }.takeIf { it >= 0 }
+                            } ?: INDEX_UNSET
+                        else -> playlist.indexOfFirst { entry -> entry.id == id }.takeIf { it >= 0 } ?: INDEX_UNSET
+                    },
             )
         }
 

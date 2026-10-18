@@ -13,6 +13,7 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import org.junit.Rule
@@ -54,6 +55,7 @@ class TrackRowTest {
         title: String,
         durationSeconds: Double,
         isPlaying: Boolean,
+        isArmed: Boolean = false,
         onClick: () -> Unit = {},
     ) = composeRule.setContent {
         MaterialTheme {
@@ -61,6 +63,7 @@ class TrackRowTest {
                 title = title,
                 durationSeconds = durationSeconds,
                 isPlaying = isPlaying,
+                isArmed = isArmed,
                 onClick = onClick,
             )
         }
@@ -94,6 +97,25 @@ class TrackRowTest {
     fun thePlayingDescriptionAppearsOnlyWhilePlaying() {
         setContent(title = "On air", durationSeconds = 30.0, isPlaying = false)
         composeRule.onNodeWithContentDescription("Now playing").assertDoesNotExist()
+    }
+
+    @Test
+    fun theArmedBadgeRidesTheMergedRowAnnouncingTheArm() {
+        setContent(title = "Chosen", durationSeconds = 30.0, isPlaying = false, isArmed = true)
+        // The badge's label and its description ride the ONE merged row
+        // node — announced with the title and duration, never a second
+        // TalkBack focus.
+        composeRule.onNode(hasText("Chosen").and(hasText("UP NEXT"))).assertExists()
+        composeRule
+            .onNode(hasText("Chosen").and(hasContentDescription("Armed as next track")))
+            .assertExists()
+    }
+
+    @Test
+    fun theArmedBadgeAppearsOnlyWhileArmed() {
+        setContent(title = "Ordinary", durationSeconds = 30.0, isPlaying = false, isArmed = false)
+        composeRule.onNodeWithText("UP NEXT").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Armed as next track").assertDoesNotExist()
     }
 
     @Test

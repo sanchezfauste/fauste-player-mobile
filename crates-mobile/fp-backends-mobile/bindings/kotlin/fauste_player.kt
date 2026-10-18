@@ -1140,7 +1140,7 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_get_playlist() != 24486.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_get_state() != 61465.toShort()) {
+    if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_get_state() != 10998.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_move_entry() != 40170.toShort()) {
@@ -1634,6 +1634,11 @@ public interface FausteEngineInterface {
      * engine reported in use (`live.audio_system_in_use`, mirrored from
      * `EngineEvent::AudioSystemInUse`; `"null"` until the first report,
      * matching the engine's last-resort fallback).
+     *
+     * The id reads (Phase 5): `current_entry_id` is the on-air ENTRY id
+     * (`player.current`) and `armed_entry_id` the arm (`player.next`
+     * gated on `next_explicit`) — see the record's field docs for the
+     * exact reducer semantics each mirrors.
      */
     fun `getState`(): EngineState
 
@@ -1943,6 +1948,11 @@ open class FausteEngine :
      * engine reported in use (`live.audio_system_in_use`, mirrored from
      * `EngineEvent::AudioSystemInUse`; `"null"` until the first report,
      * matching the engine's last-resort fallback).
+     *
+     * The id reads (Phase 5): `current_entry_id` is the on-air ENTRY id
+     * (`player.current`) and `armed_entry_id` the arm (`player.next`
+     * gated on `next_explicit`) — see the record's field docs for the
+     * exact reducer semantics each mirrors.
      */
     override fun `getState`(): EngineState =
         FfiConverterTypeEngineState.lift(
@@ -2270,6 +2280,29 @@ data class EngineState(
     var `position`: kotlin.Double,
     var `duration`: kotlin.Double,
     var `currentTrack`: Track?,
+    /**
+     * The ENTRY the main player holds on air, by id — the model's own
+     * `PlayerState.current` (`fp-model/src/player.rs:111`), the same
+     * join key the desktop's table uses for its playing row
+     * (`p.current == Some(entry.id)`, `fp-app/src/ui/view.rs:386`).
+     * The queue rows (`get_playlist`) carry the same id, so the join
+     * is exact where a path join is ambiguous (duplicate paths each
+     * read as current). `None` while nothing is on air.
+     */
+    var `currentEntryId`: kotlin.ULong?,
+    /**
+     * The ARMED entry, by id: the main player's `next` gated on
+     * `next_explicit` — only a `set_next` (the desktop's queue tap)
+     * sets that flag (`fp-model/src/reducer.rs:676-687`), while the
+     * model's derived next always exists alongside it
+     * (`refresh_next`, `fp-model/src/reducer.rs:1362-1380`). The arm
+     * consumes when it fires (the advance into it clears the flag,
+     * `advance_to`, `fp-model/src/reducer.rs:1322-1325`), `previous`
+     * re-arms the entry it leaves (`:605-610`), and removing the armed
+     * entry clears it (`detach_entries`, `:1091-1095`). `None` means
+     * nothing is armed — never "a derived next exists".
+     */
+    var `armedEntryId`: kotlin.ULong?,
     var `volume`: kotlin.Float,
     var `backend`: kotlin.String,
 ) {
@@ -2286,6 +2319,8 @@ public object FfiConverterTypeEngineState : FfiConverterRustBuffer<EngineState> 
             FfiConverterDouble.read(buf),
             FfiConverterDouble.read(buf),
             FfiConverterOptionalTypeTrack.read(buf),
+            FfiConverterOptionalULong.read(buf),
+            FfiConverterOptionalULong.read(buf),
             FfiConverterFloat.read(buf),
             FfiConverterString.read(buf),
         )
@@ -2296,6 +2331,8 @@ public object FfiConverterTypeEngineState : FfiConverterRustBuffer<EngineState> 
                 FfiConverterDouble.allocationSize(value.`position`) +
                 FfiConverterDouble.allocationSize(value.`duration`) +
                 FfiConverterOptionalTypeTrack.allocationSize(value.`currentTrack`) +
+                FfiConverterOptionalULong.allocationSize(value.`currentEntryId`) +
+                FfiConverterOptionalULong.allocationSize(value.`armedEntryId`) +
                 FfiConverterFloat.allocationSize(value.`volume`) +
                 FfiConverterString.allocationSize(value.`backend`)
         )
@@ -2308,6 +2345,8 @@ public object FfiConverterTypeEngineState : FfiConverterRustBuffer<EngineState> 
         FfiConverterDouble.write(value.`position`, buf)
         FfiConverterDouble.write(value.`duration`, buf)
         FfiConverterOptionalTypeTrack.write(value.`currentTrack`, buf)
+        FfiConverterOptionalULong.write(value.`currentEntryId`, buf)
+        FfiConverterOptionalULong.write(value.`armedEntryId`, buf)
         FfiConverterFloat.write(value.`volume`, buf)
         FfiConverterString.write(value.`backend`, buf)
     }
@@ -2535,6 +2574,38 @@ public object FfiConverterTypeFausteError : FfiConverterRustBuffer<FausteExcepti
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalULong : FfiConverterRustBuffer<kotlin.ULong?> {
+    override fun read(buf: ByteBuffer): kotlin.ULong? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterULong.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.ULong?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterULong.allocationSize(value)
+        }
+    }
+
+    override fun write(
+        value: kotlin.ULong?,
+        buf: ByteBuffer,
+    ) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterULong.write(value, buf)
+        }
     }
 }
 

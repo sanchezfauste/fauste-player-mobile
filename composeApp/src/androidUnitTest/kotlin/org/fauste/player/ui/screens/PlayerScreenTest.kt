@@ -18,6 +18,7 @@ import org.fauste.player.player.PlayerController
 import org.fauste.player.player.QueueManager
 import org.fauste.player.player.ScriptedEngine
 import org.fauste.player.player.engineState
+import org.fauste.player.player.playlistEntry
 import org.fauste.player.player.track
 import org.fauste.player.repository.PlaylistRepository
 import org.fauste.player.rust.FausteException
@@ -71,6 +72,12 @@ class PlayerScreenTest {
                     track = track(title = "Nocturne", artist = "Fauste Trio", duration = 301.0),
                 ),
             )
+        // The queue rows the up-next line resolves from — scripted BEFORE
+        // the QueueManager boots (its ONE boot refresh reads the engine
+        // here; nothing else re-reads the queue, so this stays
+        // deterministic on the real-IO lane — the LibraryScreen suite's
+        // same ordering note).
+        engine.playlist.value = listOf(playlistEntry(id = 2u, title = "Sea Breeze"))
         controller = PlayerController(engine, AppLifecycleHolder(), Dispatchers.IO)
         queue = QueueManager(engine, Dispatchers.IO)
         repository = PlaylistRepository(queue, controller)
@@ -173,6 +180,39 @@ class PlayerScreenTest {
         composeRule.waitUntil(TIMEOUT_MILLIS) {
             composeRule.onAllNodesWithText(PlayerViewModel.BUSY_MESSAGE).fetchSemanticsNodes().isNotEmpty()
         }
+    }
+
+    @Test
+    fun theUpNextLineRendersTheArmedRowsTitleUnderTheControls() {
+        engine.state.value = engine.state.value.copy(armedEntryId = 2u)
+        composeRule.setContent {
+            FausteTheme {
+                PlayerScreen(viewModel)
+            }
+        }
+
+        composeRule.waitUntil(TIMEOUT_MILLIS) {
+            composeRule.onAllNodesWithText("Up next: Sea Breeze").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    @Test
+    fun theUpNextLineHidesWhileNothingIsArmed() {
+        composeRule.setContent {
+            FausteTheme {
+                PlayerScreen(viewModel)
+            }
+        }
+        composeRule.waitUntil(TIMEOUT_MILLIS) {
+            composeRule.onAllNodesWithText("Nocturne").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        // Nothing armed → no line: the surface carries no derived-next
+        // read, so rendering one would promise play-now.
+        composeRule
+            .onAllNodesWithText("Up next: Sea Breeze")
+            .fetchSemanticsNodes()
+            .isEmpty()
     }
 
     private companion object {

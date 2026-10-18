@@ -11,18 +11,28 @@ import org.fauste.player.player.PlaybackStatus
  *
  * [playback] is the plan-mandated [PlaybackState.fromEngineState] projection
  * of the polled engine snapshot, passed through untouched — the UiState adds
- * only the drag-feedback and error channels on top, so the mapping is
- * consumed, never re-implemented.
+ * only the drag-feedback, up-next and error channels on top, so the mapping
+ * is consumed, never re-implemented.
  *
  * Drag feedback: [pendingSeekPosition]/[pendingVolume] are non-null while a
  * drag (or its committed-but-unconfirmed tail) is in flight; the screen draws
  * them INSTEAD of the engine's values so the sliders track the finger — see
  * [PlayerViewModel]'s throttle KDoc for the full semantics.
+ *
+ * The up-next line (Phase 5): [upNextTitle] is the ARMED row's title,
+ * resolved from the queue flow by the armed id — non-null only while an arm
+ * exists (the model's `next` gated on `next_explicit`; the surface carries
+ * no derived-next read, so the line renders nothing when nobody armed —
+ * inventing a "next" there would be exactly the play-now promise the
+ * arm-only contract forbids). The em dash is the honest unknown marker for
+ * an arm whose row is not in the queue flow (the remote-mutation staleness
+ * corner), never a fake title.
  */
 data class PlayerUiState(
     val playback: PlaybackState,
     val pendingSeekPosition: Double? = null,
     val pendingVolume: Float? = null,
+    val upNextTitle: String? = null,
     val error: String? = null,
 ) {
     /** True while the transport reports playing — drives the play/pause icon. */

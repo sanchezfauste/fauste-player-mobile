@@ -143,6 +143,53 @@ class SessionPlaybackSnapshotTest {
     }
 
     @Test
+    fun theOnAirEntryIdWinsOverThePathJoinAndDisambiguatesDuplicates() {
+        // The Phase-5 regression this task closes: two rows share a path,
+        // and the on-air one is the SECOND — the path join flags/places
+        // the first, the id join places the true row.
+        val queue =
+            listOf(
+                playlistEntry(id = 1u, title = "First copy", path = "/music/b.flac"),
+                playlistEntry(id = 2u, title = "Second copy", path = "/music/b.flac"),
+            )
+        val snapshot =
+            SessionPlaybackSnapshot.from(
+                engineState(
+                    status = "playing",
+                    track = track(path = "/music/b.flac"),
+                    currentEntryId = 2u,
+                ),
+                queue,
+            )
+
+        assertEquals(1, snapshot.currentQueueIndex, "the ID join places the true on-air row, not the first path match")
+        assertEquals(2u, snapshot.queue[1].id)
+    }
+
+    @Test
+    fun theOnAirIdMissingFromTheQueueReadsAsIndexUnsetNeverAGuessedRow() {
+        // The id is authoritative while carried: over a stale queue the
+        // on-air id may be gone (remote mutation), and falling back to
+        // the path could pick a duplicate-path row that is NOT the
+        // on-air entry — INDEX_UNSET instead, never a guess.
+        val snapshot =
+            SessionPlaybackSnapshot.from(
+                engineState(
+                    status = "playing",
+                    track = track(path = "/music/b.flac"),
+                    currentEntryId = 9u,
+                ),
+                listOf(playlistEntry(id = 1u, path = "/music/b.flac")),
+            )
+
+        assertEquals(
+            SessionPlaybackSnapshot.INDEX_UNSET,
+            snapshot.currentQueueIndex,
+            "the id answered; a path fallback over a stale queue would guess a row",
+        )
+    }
+
+    @Test
     fun anOnAirPathMissingFromTheQueueReadsAsIndexUnsetButKeepsEngineMetadata() {
         val snapshot =
             SessionPlaybackSnapshot.from(
