@@ -55,6 +55,13 @@ import org.fauste.player.player.QueueManager
  * only the test lane swaps it, and its KDoc documents the residual
  * mask that swap leaves.
  *
+ * THE BOOT WINDOW (the smoke's second find): [latestSnapshot] is null
+ * until the first publish — the service's stop-teardown reads it, and a
+ * Stopped SEED read as engine truth during the pre-publish window
+ * killed the service ~50 ms after session-add on-device. See the field
+ * KDoc; [getState] falls back to the idle seed so media3's own first
+ * reads stay a legal IDLE state either way.
+ *
  * The command contract: `handle*` methods fire the controller command
  * into the scope and return an already-completed future — "applied
  * synchronously" in SimpleBasePlayer's terms, because the engine IS
@@ -79,12 +86,27 @@ internal class FaustePlayerAdapter(
      */
     private val publishDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
-    /** The last snapshot the collector published; read on the main thread by [getState]. */
+    /**
+     * The last snapshot the collector published — **null until the first
+     * publish** (the boot window). THE SMOKE'S SECOND FIND, and the
+     * subtlest one: the service's teardown watcher reads this to decide
+     * "the engine stopped, exit", but the collector's first publish is
+     * two dispatches away when [triggerNotificationUpdate] fires at
+     * session-add — an idle *seed* here (status Stopped) read as engine
+     * truth killed the freshly-built service within ~50 ms of its
+     * creation, on-device only (the pre-fix collector crashed first —
+     * Finding 1's crash masked this race; the Robolectric lane's pump
+     * always publishes before any teardown check). Null makes the seed
+     * period unobservable as a *published state*: the watcher's
+     * `null?.status == Stopped` is simply false, media3's own update
+     * machinery passes through, and the first real publish re-enters the
+     * notification funnel within one poll period.
+     */
     @Volatile
-    private var latest: SessionPlaybackSnapshot = SessionPlaybackSnapshot.idle
+    private var latest: SessionPlaybackSnapshot? = null
 
-    /** The latest published snapshot — the service's teardown watcher reads it (one pipeline, one truth). */
-    val latestSnapshot: SessionPlaybackSnapshot
+    /** The latest published snapshot — null during the boot window (see [latest]); the service's teardown watcher is the reader. */
+    val latestSnapshot: SessionPlaybackSnapshot?
         get() = latest
 
     @Suppress("unused") // the Job is the collector's lifetime: cancelled with the scope in the service's onDestroy
@@ -107,7 +129,12 @@ internal class FaustePlayerAdapter(
         }
 
     override fun getState(): State {
-        val snapshot = latest
+        // The boot-window fallback: media3 reads the state synchronously
+        // at session build, before the collector's first publish — the
+        // idle seed is the legal IDLE projection for that window (the
+        // snapshot suite pins it), while latestSnapshot stays null so no
+        // consumer can mistake the seed for a published engine truth.
+        val snapshot = latest ?: SessionPlaybackSnapshot.idle
         return State
             .Builder()
             .setAvailableCommands(SESSION_COMMANDS)

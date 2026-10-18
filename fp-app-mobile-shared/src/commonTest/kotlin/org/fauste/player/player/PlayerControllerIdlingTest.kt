@@ -23,6 +23,25 @@ import kotlin.test.assertTrue
  * periodic rhythm; and the loop's existing death/cancellation semantics
  * must hold through an idle window (the controller's idling KDoc).
  *
+ * THE SERVICE KEEP-AWAKE GATE (the Task-6 review's Important finding,
+ * closed here): the Task-6 playback service feeds its media notification
+ * from this very poll, so an unconditional Background idle froze the
+ * session's snapshot the moment the screen went off — stale lock-screen
+ * play state, stale on-air metadata on auto-advance, a headset pause
+ * leaving "Playing" on the notification. The idle condition is now
+ * `Background AND NOT serviceActive`:
+ * [PlayerController.setPlaybackServiceActive] is the service's half of
+ * the contract — true from its foreground promotion, false on its exit
+ * path — and these pins hold it: Background+service-active keeps the
+ * periodic reads (the notification stays fed; the service is a
+ * foreground service, so background execution restrictions do not
+ * apply to it), Background+service-inactive idles exactly as Task 5
+ * intended, and the gate is NOT a second lifetime — close() ends the
+ * loop through it. The disclosed residual limit (the controller
+ * KDoc): a remote-driven play while backgrounded AND fully stopped
+ * still idles — no service is alive to hold the gate open, so the
+ * poll never sees the play that would trigger the service starter.
+ *
  * Evidence mechanics — a finding about the established pattern, worth
  * recording: `RealEngineFixture.CountingDispatches` is a plain
  * `CoroutineDispatcher`, so a loop dispatched through it does NOT route
@@ -120,6 +139,93 @@ class PlayerControllerIdlingTest {
             runCurrent()
             assertEquals(idled + 3, gets.count, "the loop did not return to its periodic rhythm")
             controller.close()
+        }
+
+    /**
+     * THE SERVICE KEEP-AWAKE GATE (the class KDoc's Task-6 finding):
+     * Background alone no longer idles the poll while the playback
+     * service is active — the service's notification is fed by these
+     * reads. Background + service-active must keep the PERIODIC rhythm
+     * (not one catch-up read), and turning the gate off must return the
+     * loop to Task 5's idle exactly as before.
+     */
+    @Test
+    fun serviceActiveKeepsThePollReadingWhileBackgrounded() =
+        runTest {
+            val gets = CountingGets(engine)
+            val holder = AppLifecycleHolder()
+            val controller =
+                PlayerController(gets, holder, StandardTestDispatcher(testScheduler), pollPeriodMillis = POLL_PERIOD)
+
+            runCurrent()
+            holder.update(AppLifecycleState.Background)
+            advanceTimeBy(POLL_PERIOD)
+            runCurrent()
+            val idled = gets.count
+
+            // The service is up (its foreground promotion holds the gate
+            // open): the poll keeps its periodic rhythm while backgrounded.
+            controller.setPlaybackServiceActive(true)
+            repeat(IDLE_HEARTBEATS_TO_PROBE) {
+                advanceTimeBy(POLL_PERIOD)
+                runCurrent()
+            }
+            assertTrue(
+                gets.count > idled,
+                "the poll idled while backgrounded with the playback service active — the notification froze",
+            )
+            // And it is the rhythm, not one catch-up: several periods in,
+            // the count has moved several times.
+            val readsWhileActive = gets.count - idled
+            assertTrue(readsWhileActive >= 2, "the service-active poll read fewer than two periods' worth")
+
+            // The service exits: the gate closes, and the loop returns to
+            // Task 5's idle (the next wakes cross no FFI boundary).
+            controller.setPlaybackServiceActive(false)
+            advanceTimeBy(POLL_PERIOD)
+            runCurrent()
+            val settled = gets.count
+            repeat(IDLE_HEARTBEATS_TO_PROBE) {
+                advanceTimeBy(POLL_PERIOD)
+                runCurrent()
+            }
+            assertEquals(settled, gets.count, "the poll kept reading after the playback service exited")
+            controller.close()
+        }
+
+    /**
+     * The gate is NOT a second lifetime: close() ends the loop through a
+     * Background+service-active window as surely as through Task 5's plain
+     * idle — a loop that survived close() would resume reading when the
+     * app came back to the foreground, exactly what the close-from-idle
+     * pin above guards.
+     */
+    @Test
+    fun closeWhileBackgroundedAndServiceActiveStillEndsTheLoop() =
+        runTest {
+            val gets = CountingGets(engine)
+            val holder = AppLifecycleHolder()
+            val controller =
+                PlayerController(gets, holder, StandardTestDispatcher(testScheduler), pollPeriodMillis = POLL_PERIOD)
+
+            runCurrent()
+            holder.update(AppLifecycleState.Background)
+            controller.setPlaybackServiceActive(true)
+            advanceTimeBy(POLL_PERIOD)
+            runCurrent()
+            assertTrue(gets.count >= 2, "the service-active gate never held the poll open")
+
+            controller.close()
+            val atClose = gets.count
+
+            // Foreground AFTER close: a loop that survived close() through
+            // the keep-awake gate would resume reading on its next wake.
+            holder.update(AppLifecycleState.Foreground)
+            repeat(IDLE_HEARTBEATS_TO_PROBE) {
+                advanceTimeBy(POLL_PERIOD)
+                runCurrent()
+            }
+            assertEquals(atClose, gets.count, "the loop survived close() through the service-active gate")
         }
 
     /**

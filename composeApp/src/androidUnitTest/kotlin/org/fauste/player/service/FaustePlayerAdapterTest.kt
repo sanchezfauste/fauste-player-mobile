@@ -308,6 +308,34 @@ class FaustePlayerAdapterTest {
         world.release()
     }
 
+    /**
+     * THE BOOT-WINDOW CONTRACT (the smoke's second find, pinned): the
+     * service's stop-teardown reads [FaustePlayerAdapter.latestSnapshot],
+     * so the pre-publish window must be NULL, never an idle seed with
+     * status Stopped — a seed read as engine truth made the teardown kill
+     * the freshly-built service within ~50 ms of session-add, on-device
+     * only (Finding 1's crash masked the race; the fixed collector's
+     * first publish is two dispatches behind the synchronous
+     * triggerNotificationUpdate). The teardown's own `?.status` check
+     * makes null the safe answer; this pin holds the adapter to it while
+     * getState stays legal over the same window.
+     */
+    @Test
+    fun theSnapshotIsNullOverTheBootWindowAndLegalForMedia3() {
+        val world = adapterWorld()
+        world.adapter.apply {
+            // Pre-publish: no snapshot has landed, but media3's
+            // synchronous first reads must still see a legal IDLE player.
+            assertEquals(null, world.adapter.latestSnapshot, "a snapshot must not exist before the collector's first publish")
+            assertEquals(Player.STATE_IDLE, playbackState, "the boot window must project a legal IDLE state")
+
+            world.pump()
+            // First publish landed: the window is over.
+            assertTrue(world.adapter.latestSnapshot != null, "the collector's first publish never landed")
+        }
+        world.release()
+    }
+
     /** The whole world one test needs: the real state layer over the double, plus the adapter under test. */
     private class TestWorld(
         val engine: ScriptedEngine,

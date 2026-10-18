@@ -64,6 +64,17 @@ data class SessionPlaybackSnapshot(
      * Track record carries no id), or [INDEX_UNSET] while the on-air
      * path is not in the queue rows — the queue flow's documented
      * stale-on-remote-mutations corner. Never a guessed row.
+     *
+     * The honest display-layer note (Task 6's review fold-in): the DATA
+     * here keeps "never a guessed row", but media3's
+     * `SimpleBasePlayer.State` constructor maps
+     * `currentMediaItemIndex == C.INDEX_UNSET` to **row 0** whenever the
+     * timeline is non-empty (verified in the 1.11.1 bytecode: the
+     * builder's -1 becomes a plain 0 in the built State) — so over a
+     * non-empty playlist the lock screen may display row 0's metadata
+     * in exactly that stale corner, at the display layer only. The
+     * empty-timeline case is unaffected (there is no row 0 to show), and
+     * the mapping layer still reports the truth to anyone who asks.
      */
     val currentQueueIndex: Int,
 ) {

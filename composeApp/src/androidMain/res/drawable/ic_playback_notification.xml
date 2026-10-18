@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The media notification's small icon (Task 6's review fold-in): a
+     plain play glyph — notification small icons are alpha-masked by the
+     system, so a single white-on-transparent shape is the whole
+     contract. The app ships no launcher icon resource (the manifest
+     declares none; the platform default serves the launcher), so this
+     dedicated drawable is what the DefaultMediaNotificationProvider and
+     the stop path's shutdown notification render with — instead of
+     media3's generic media3_notification_small_icon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M8.5,5.5 L8.5,18.5 L18.5,12 Z" />
+</vector>

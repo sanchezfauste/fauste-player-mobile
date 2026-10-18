@@ -42,19 +42,46 @@ import kotlin.coroutines.cancellation.CancellationException
  * own one-period granularity (the same freshness bound the UI always
  * has) — and then returns to the periodic rhythm.
  *
+ * **THE SERVICE KEEP-AWAKE GATE** (the Task-6 review's follow-on): the
+ * idle condition is `Background && !serviceActive`, set through
+ * [setPlaybackServiceActive] by the playback service itself — true from
+ * its foreground promotion, false on its exit path. While the service is
+ * active the poll therefore keeps its periodic rhythm even with the app
+ * backgrounded: the service's media notification is fed by THIS flow
+ * (through [engineState] → the session adapter), so an unconditional
+ * Background idle froze the lock-screen state within one period — the
+ * exact conflict the review found between this Task-5 optimization and
+ * its Task-6 consumer. The gate is not an exemption from execution
+ * rules: the service is a FOREGROUND service, so background
+ * restrictions do not apply to it, and the poll's reads stay the cheap
+ * JNA snapshots they always were. Paused counts as active too — the
+ * service keeps running with its notification while paused (Ruling 5),
+ * and that notification still needs live state. Background with NO
+ * service idles exactly as Task 5 intended.
+ *
+ * **The disclosed limit** (recorded in the Task-6 report): a
+ * remote-driven play while the app is backgrounded AND fully stopped
+ * still idles — no service is alive to hold the gate open, so the poll
+ * never sees the Playing transition that would arm the service
+ * starter; the play happens in the engine and the notification never
+ * arrives until the app is foregrounded again. A loopback/paired
+ * client issuing play to a stopped, backgrounded app is the corner
+ * (the remote API has no way to start an Android service by itself).
+ *
  * **IDLING STOPS UI STATE UPDATES, NOT PLAYBACK.** The engine's audio
  * path is native (the conductor + AAudio threads run in Rust); the poll
  * only feeds UI state, so a backgrounded app keeps playing and simply
  * stops refreshing its snapshot. The Phase-4 foreground service (Task 6)
  * builds on exactly this distinction: it observes a UI-facing bridge and
- * the audio continues, while this loop idles. There is deliberately NO
- * `androidx.lifecycle`/`ProcessLifecycleOwner` here — the holder is the
- * Phase-3 plain box (see `Lifecycle.kt`'s dependency-discipline note),
- * constructor-injected so DI keeps one source of truth the service can
- * read too; a `fun onAppLifecycle(...)` callback would have duplicated
- * the holder's state and forced the Activity to resolve the
- * engine-backed controller on the main thread (the graph's documented
- * off-main rule).
+ * the audio continues — and since Task 6 the keep-awake gate above
+ * keeps THAT observation live while the service runs. There is
+ * deliberately NO `androidx.lifecycle`/`ProcessLifecycleOwner` here — the
+ * holder is the Phase-3 plain box (see `Lifecycle.kt`'s
+ * dependency-discipline note), constructor-injected so DI keeps one
+ * source of truth the service can read too; a `fun onAppLifecycle(...)`
+ * callback would have duplicated the holder's state and forced the
+ * Activity to resolve the engine-backed controller on the main thread
+ * (the graph's documented off-main rule).
  *
  * **The Busy surface**: a command whose conductor queue is full comes
  * back [CommandResult.Busy] — the command was dropped, retrying is safe
@@ -115,14 +142,18 @@ class PlayerController(
     private val pollLoop: Job =
         scope.launch {
             while (isActive) {
-                // THE IDLE GATE (the class KDoc's idling contract): while
-                // the app is backgrounded the tick skips the engine read
-                // — the whole FFI boundary — and re-arms the plain delay.
-                // The check itself is a volatile in-memory read on the
-                // holder, so the idle heartbeat costs no JNA hop; the
-                // first Foreground wake falls through to a read at once
-                // (the immediate fresh tick after idling).
-                if (lifecycle.current() != AppLifecycleState.Background) {
+                // THE IDLE GATE (the class KDoc's idling contract, now with
+                // the Task-6 keep-awake gate): the tick skips the engine
+                // read — the whole FFI boundary — while the app is
+                // backgrounded AND the playback service is not active; the
+                // service holds the gate open because its notification is
+                // fed by this very poll. Both reads are cheap in-memory
+                // volatile reads (the holder and the service flag), so the
+                // idle heartbeat costs no JNA hop; the first Foreground
+                // wake — or the first wake after the service exits a
+                // backgrounded app — falls through to a read at once (the
+                // immediate fresh tick after idling).
+                if (lifecycle.current() != AppLifecycleState.Background || playbackServiceActive) {
                     try {
                         _engineState.value = engine.getState()
                         // A good read restores the channel to null — current
@@ -147,6 +178,23 @@ class PlayerController(
                 delay(pollPeriodMillis)
             }
         }
+
+    /**
+     * The playback service's half of the keep-awake gate (the class KDoc):
+     * `active = true` from the service's foreground promotion, `false` on
+     * its exit path. A volatile, not a flow: the poll re-reads it every
+     * wake, so the flag needs exactly the same memory visibility the
+     * lifecycle holder has, and nothing more — and idempotent by design,
+     * so the service's repeated promotions and its onDestroy belt-and-
+     * braces clear are all safe.
+     */
+    @Volatile
+    private var playbackServiceActive: Boolean = false
+
+    /** Opens/closes the keep-awake gate; see the class KDoc's gate section. Idempotent, thread-safe. */
+    fun setPlaybackServiceActive(active: Boolean) {
+        playbackServiceActive = active
+    }
 
     /** Queues `Command::Play` for the main player. */
     suspend fun play(): CommandResult = command { it.play() }

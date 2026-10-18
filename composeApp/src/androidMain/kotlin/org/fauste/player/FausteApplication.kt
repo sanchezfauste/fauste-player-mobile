@@ -61,6 +61,10 @@ class FausteApplication : Application() {
     }
 
     override fun onTerminate() {
+        // Dead code on real devices (the platform contract: onTerminate
+        // is only ever called on emulated processes); process death ends
+        // the scope — and everything else — anyway, so nothing here is
+        // load-bearing and nothing may rely on it running.
         appScope.cancel()
         super.onTerminate()
     }

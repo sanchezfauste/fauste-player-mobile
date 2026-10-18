@@ -9,6 +9,17 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
+    <!-- INTERNET (the fix-wave smoke's real find): Android grants AF_INET
+         sockets only to apps holding this permission (the kernel's inet
+         group), even for 127.0.0.1 — without it the engine's loopback
+         remote binds nowhere (EACCES, silently retried) and the app's own
+         RemoteApi client can never reach it, killing the whole remote
+         feature on-device while every host lane stays green (the JVM
+         enforces nothing). Declared, not runtime-requested: INTERNET is
+         a normal install-time permission. The NSC below still pins the
+         traffic itself to loopback cleartext-only. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- The foreground playback service (Task 6, Ruling 5): FOREGROUND_SERVICE
          is the API 26 base requirement; FOREGROUND_SERVICE_MEDIA_PLAYBACK is
          the API 34 type requirement for a mediaPlayback-typed service.
