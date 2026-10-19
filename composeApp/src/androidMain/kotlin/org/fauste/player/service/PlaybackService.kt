@@ -100,9 +100,22 @@ import kotlin.coroutines.cancellation.CancellationException
  * player-command buttons), so the deck's Stop reaches the engine
  * through the same tested adapter path as every other button.
  *
- * What is NOT here (Phase 5 candidates, honestly out of scope): audio
- * focus handling (the native engine owns its sink; media3 runs focus
- * through ExoPlayer, which this bridge deliberately is not) and
+ * **AUDIO FOCUS** (Phase 5, Ruling 1): focus lives in this service —
+ * media3 runs focus through ExoPlayer, which this bridge
+ * deliberately is not (the native engine owns its sink), so the
+ * service owns an [AudioFocusController]: a pure [FocusPolicy] state
+ * machine (host-pinned, the full event × state matrix) fed by the
+ * service's own engineState observation and the platform's focus
+ * listener, whose actions ride the SAME controller command path the UI
+ * uses (pause / resume / ducked SetVolume) — a focus pause reaches
+ * the UI like any other pause, through engineState, within one poll
+ * period. Focus is requested on the first Play observation, held
+ * through pauses, abandoned on the stop path and teardown; a phone
+ * call pauses with a resume-on-regain, a navigation prompt ducks the
+ * engine volume to 0.2× the model's current level and restores the
+ * stored pre-duck value on regain.
+ *
+ * What is NOT here (a Phase 5 candidate, honestly out of scope):
  * Android Auto (no `MediaLibraryService` yet).
  */
 @OptIn(UnstableApi::class)
@@ -123,6 +136,14 @@ class PlaybackService : MediaSessionService() {
      */
     @Volatile
     private var controller: PlayerController? = null
+
+    /**
+     * The focus half (Phase 5, Ruling 1): built beside the adapter in
+     * the session-build runnable, released in [onDestroy] — see
+     * [AudioFocusController]'s KDoc for the design.
+     */
+    @Volatile
+    private var focusController: AudioFocusController? = null
 
     /**
      * THE GATE-LEAK RACE GUARD (the final review's folded finding):
@@ -182,6 +203,23 @@ class PlaybackService : MediaSessionService() {
                     try {
                         val sessionAdapter = FaustePlayerAdapter(resolvedController, queue, scope)
                         adapter = sessionAdapter
+
+                        // THE FOCUS HALF (Phase 5, Ruling 1 — see
+                        // [AudioFocusController]'s KDoc for the design):
+                        // the same Koin controller the adapter
+                        // commands through, so every focus action rides
+                        // the exact command path the UI uses — no new
+                        // state channel; the UI renders a focus pause
+                        // like any other, through engineState. Built
+                        // beside the adapter for the same reason:
+                        // after the isDestroyed guard, on the looper,
+                        // before anything can play.
+                        focusController =
+                            AudioFocusController(
+                                player = resolvedController,
+                                scope = scope,
+                                requester = PlatformAudioFocusRequester(this@PlaybackService),
+                            )
                         val session =
                             MediaSession
                                 .Builder(this@PlaybackService, sessionAdapter)
@@ -278,6 +316,14 @@ class PlaybackService : MediaSessionService() {
         // kills), and a gate left open would keep the controller's poll
         // from ever idling again for the rest of the process.
         controller?.setPlaybackServiceActive(false)
+        // THE FOCUS ABANDON (Phase 5, Ruling 1) runs BEFORE the scope
+        // cancel: release() abandons the AudioFocusRequest and — if a
+        // duck is still live — restores the model's volume over the
+        // controller's own release scope, which the cancel below must
+        // not kill (the volume survives Stop; the restore is the one
+        // engine command that must outlive the dying service).
+        focusController?.release()
+        focusController = null
         mediaSession?.release()
         mediaSession = null
         scope.cancel()
