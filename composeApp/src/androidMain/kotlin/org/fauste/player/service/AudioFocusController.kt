@@ -60,7 +60,21 @@ import org.fauste.player.player.PlayerController
  * user change) is float-fragile and can leak the duck permanently;
  * (b) the read is poll-fresh within ≤ one poll period, so a slider
  * move racing the duck command within ~100 ms stores the pre-move
- * value. The restore is not optional bookkeeping anywhere: the
+ * value. THE STALE-READ RACE, and its closure: the restore itself is
+ * dispatched asynchronously, and the poll carries it into
+ * `engineState` only ≤ one poll period later — so a duck landing
+ * inside that window (a GAIN followed by a CAN_DUCK: back-to-back
+ * navigation prompts) would read the still-ducked polled value, store
+ * it as its pre-duck level, and COMPOUND the cut on every repeat
+ * (0.8 → 0.16 → 0.032 …). Closed by the pending restore: [unduck]
+ * records the value it just commanded, and [duck] consumes that
+ * record — authoritative for the very next duck, because the engine's
+ * own poll cannot have reflected the restore yet — before ever
+ * reading `engineState`; the pending value is set on every restore
+ * and consumed by the very next duck. The residual stays the
+ * slider-move tradeoff above: a user move between the restore and the
+ * next duck reads as the restored value — the same clobber class as
+ * (a). The restore is not optional bookkeeping anywhere: the
  * model's volume SURVIVES Stop (`stop_player` never touches
  * `player.volume`), so an unrestored duck would bleed into the next
  * playback at 0.2×.
@@ -105,6 +119,19 @@ internal class AudioFocusController(
      */
     @Volatile
     private var duckedFromVolume: Float? = null
+
+    /**
+     * The restore the controller just COMMANDED — still invisible to
+     * the polled `engineState`, which carries it only ≤ one poll
+     * period later. [unduck] sets this on every restore dispatch;
+     * [duck] consumes it, once, in preference to the polled read:
+     * inside that window the polled value can still be the PREVIOUS
+     * duck's ducked level, and storing it would compound the cut on
+     * every regain (the class KDoc's stale-read race). Volatile, like
+     * [duckedFromVolume].
+     */
+    @Volatile
+    private var pendingRestore: Float? = null
 
     init {
         requester.requestResultSink = { result ->
@@ -200,11 +227,21 @@ internal class AudioFocusController(
         factor: Float,
         commandScope: CoroutineScope,
     ) {
-        val current = player.engineState.value.volume
         // The belt behind the policy's no-double-duck guard: a stored
         // value means a duck is already live and the multiply must not
-        // compound.
+        // compound. Unreachable via the policy's own matrix — Duck is
+        // never emitted twice without an intervening Unduck — so this
+        // is a belt, not a gate.
         if (duckedFromVolume == null) {
+            // The pending restore outranks the polled read: the restore
+            // was dispatched asynchronously and the engine's own poll
+            // cannot have reflected it yet, so the polled value here
+            // can still be the previous duck's ducked level — storing
+            // it would compound the cut on every regain (0.8 → 0.16 →
+            // 0.032 …). Consume-on-read: the pending value answers only
+            // the very next duck.
+            val current = pendingRestore ?: player.engineState.value.volume
+            pendingRestore = null
             duckedFromVolume = current
             commandScope.launch { player.setVolume(current * factor) }
         }
@@ -214,6 +251,10 @@ internal class AudioFocusController(
     private fun unduck(commandScope: CoroutineScope) {
         val restore = duckedFromVolume ?: return
         duckedFromVolume = null
+        // The restore rides the scope asynchronously — arm the pending
+        // restore so the very next duck reads THIS value, not the
+        // still-ducked polled one (the class KDoc's stale-read race).
+        pendingRestore = restore
         commandScope.launch { player.setVolume(restore) }
     }
 

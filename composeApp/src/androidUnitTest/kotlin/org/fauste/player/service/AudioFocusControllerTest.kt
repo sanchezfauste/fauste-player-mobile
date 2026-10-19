@@ -265,6 +265,55 @@ class AudioFocusControllerTest {
     }
 
     @Test
+    fun aGainFollowedByACanDuckWithinOnePollPeriodDucksFromTheJustRestoredValue() {
+        val w = World()
+        try {
+            w.engineMoves("playing")
+            w.requestAnswers(AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+
+            // The first prompt ducks the 0.8 model volume...
+            w.listenerDelivers(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK)
+            assertEquals(listOf(EXPECTED_DUCK), w.engine.setVolumes.toList(), "the first duck = 0.8 × 0.2")
+            // ...and the poll OBSERVES the ducked value before the prompt ends.
+            w.scheduler.advanceTimeBy(20)
+            w.scheduler.runCurrent()
+            assertEquals(EXPECTED_DUCK, w.controller.engineState.value.volume, "the poll has observed the ducked value")
+
+            // The prompt ends (the restore is dispatched ASYNCHRONOUSLY)
+            // and a SECOND prompt lands within the same poll period —
+            // back-to-back navigation prompts — before any poll can
+            // carry the just-restored 0.8 back into engineState. The
+            // second duck must store the ORIGINAL pre-duck value (0.8):
+            // reading the stale polled 0.16 would send 0.032 and
+            // "restore" 0.16 at the next regain — the user's 0.8
+            // permanently cut 5×, compounding on every repeat.
+            w.listenerDelivers(AudioManager.AUDIOFOCUS_GAIN)
+            assertEquals(listOf(EXPECTED_DUCK, 0.8f), w.engine.setVolumes.toList(), "the regain restores 0.8")
+            assertEquals(
+                EXPECTED_DUCK,
+                w.controller.engineState.value.volume,
+                "the restore is not yet poll-visible — the exact stale-read window",
+            )
+            w.listenerDelivers(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK)
+            assertEquals(
+                listOf(EXPECTED_DUCK, 0.8f, EXPECTED_DUCK),
+                w.engine.setVolumes.toList(),
+                "the second duck multiplies the just-restored 0.8, not the stale polled 0.16",
+            )
+
+            // ...and the second regain restores the original 0.8 again.
+            w.listenerDelivers(AudioManager.AUDIOFOCUS_GAIN)
+            assertEquals(
+                listOf(EXPECTED_DUCK, 0.8f, EXPECTED_DUCK, 0.8f),
+                w.engine.setVolumes.toList(),
+                "the second regain restores the original 0.8, not the compounded 0.16",
+            )
+        } finally {
+            w.close()
+        }
+    }
+
+    @Test
     fun theEngineStopAbandonsAndRestoresALiveDuckFirst() {
         val w = World()
         try {

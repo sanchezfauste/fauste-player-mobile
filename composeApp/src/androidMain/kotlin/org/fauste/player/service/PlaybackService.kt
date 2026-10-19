@@ -210,7 +210,11 @@ class PlaybackService : MediaSessionService() {
                         // commands through, so every focus action rides
                         // the exact command path the UI uses — no new
                         // state channel; the UI renders a focus pause
-                        // like any other, through engineState. Built
+                        // like any other, through engineState. The
+                        // acquire hook is observation-based (it fires
+                        // when Playing is OBSERVED, not at the play
+                        // command), so playback starts ≤1 poll period
+                        // before the focus request goes out. Built
                         // beside the adapter for the same reason:
                         // after the isDestroyed guard, on the looper,
                         // before anything can play.

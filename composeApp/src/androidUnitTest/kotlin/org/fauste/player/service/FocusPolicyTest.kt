@@ -129,6 +129,10 @@ class FocusPolicyTest {
             setup = { holding(false) },
         )
         cell(FocusEvent.FocusGained, FocusAction.None, resulting = FocusState.Holding, setup = { holding(false) })
+        // Stray request outcomes while holding paused (a re-request's
+        // late result, the grant echo): nothing for a hold to answer.
+        cell(FocusEvent.RequestGranted, FocusAction.None, resulting = FocusState.Holding, setup = { holding(false) })
+        cell(FocusEvent.RequestFailed, FocusAction.None, resulting = FocusState.Holding, setup = { holding(false) })
     }
 
     @Test
@@ -215,6 +219,17 @@ class FocusPolicyTest {
         // The escalation to a full loss kills the flag — no auto-resume,
         // and no pause either: the transient already paused us.
         cell(FocusEvent.FocusLost, FocusAction.Abandon, resulting = FocusState.NoFocus, setup = { transientLost(true) })
+        // The same full loss landing while our own transient pause is
+        // still in flight (the engine's Paused not yet observed): the
+        // engine still reads Playing, so the loss pauses AGAIN — then
+        // abandons.
+        cell(
+            FocusEvent.FocusLost,
+            FocusAction.Pause,
+            FocusAction.Abandon,
+            resulting = FocusState.NoFocus,
+            setup = { holding(true).event(FocusEvent.FocusLostTransient) },
+        )
     }
 
     @Test
@@ -300,6 +315,15 @@ class FocusPolicyTest {
         )
         cell(
             FocusEvent.FocusLostTransientCanDuck,
+            FocusAction.None,
+            resulting = FocusState.TransientLostDucked(resumeOnGain = true),
+            setup = { transientLostDucked(true) },
+        )
+        // The nested-transient twin one duck deeper (the TransientLost
+        // cells above, over the ducked escalation): the deeper holder
+        // wins, the duck survives, and the unwind still ends at our GAIN.
+        cell(
+            FocusEvent.FocusLostTransient,
             FocusAction.None,
             resulting = FocusState.TransientLostDucked(resumeOnGain = true),
             setup = { transientLostDucked(true) },

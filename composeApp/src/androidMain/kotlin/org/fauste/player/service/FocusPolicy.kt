@@ -72,7 +72,11 @@ import org.fauste.player.player.PlaybackStatus
  * pair. Event ORDERING between the two sources is inherently racy (a
  * focus change may be observed before the status flip it answered);
  * every cell re-evaluates against the LATEST observed status, so any
- * interleaving converges on the same fixed point.
+ * interleaving converges on the same fixed point. Event-EVENT
+ * ordering is racy in the same microscopic way — two rapid listener
+ * deliveries hop through separate `scope.launch`es on the IO pool,
+ * and dispatch order is not contractually FIFO — a window whose worst
+ * case recovers with one user tap.
  */
 internal class FocusPolicy(
     /** The duck multiply — 0.2 by default, a constant documented as configurable-not-yet-exposed. */
