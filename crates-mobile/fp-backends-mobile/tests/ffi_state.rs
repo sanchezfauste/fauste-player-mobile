@@ -655,7 +655,11 @@ fn get_state_reports_the_on_air_entry_id() {
 /// `tests/engine_smoke.rs:320`). So the arm consumes when it fires:
 /// crossing into the armed entry re-derives the next and clears the
 /// flag (`advance_to`, `fp-model/src/reducer.rs:1322-1325`), and the
-/// read goes back to None while the derived next keeps existing.
+/// read goes back to None. Note the derived next does NOT always
+/// survive: gamma is the queue TAIL here, and
+/// `next_playable_after(tail)` is None (`fp-model/src/reducer.rs:1320`)
+/// — the emulator self-fix in this phase corrected exactly this
+/// narrative; the gate under test is the flag, not the tail shape.
 #[test]
 fn armed_entry_id_reports_only_an_explicit_arm_and_consumes_on_advance() {
     let dirs = TempDirs::new("armed-id");
