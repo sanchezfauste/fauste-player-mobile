@@ -31,12 +31,17 @@ import kotlin.coroutines.cancellation.CancellationException
  *   mid-pause.
  * - Known limit, documented honestly: a service killed by the system
  *   WHILE playing leaves playback dead with it (process death kills
- *   the native engine). The system DOES restart the sticky service,
- *   which exits quietly with nothing to serve (PlaybackService's
- *   restart-semantics KDoc); the notification returns only with the
- *   next Play, whose distinct Playing phase re-arms this trigger (a
- *   paused notification swiped away already exits through media3's
- *   own dismissal path).
+ *   the native engine) — though the QUEUE no longer dies with it:
+ *   the core's save thread persists it mutation-debounced and during
+ *   playback (Task 3b, `player_core.rs`), so the next Play serves
+ *   the queue the kill interrupted, with the interrupted track
+ *   waiting paused at its last saved position (never auto-resumed).
+ *   The system DOES restart the sticky service, which exits quietly
+ *   — nothing can be playing in the fresh process
+ *   (PlaybackService's restart-semantics KDoc); the notification
+ *   returns only with the next Play, whose distinct Playing phase
+ *   re-arms this trigger (a paused notification swiped away already
+ *   exits through media3's own dismissal path).
  * - A REFUSED start is log-and-skip, never fatal (the final review's
  *   F2 finding): API 31+ can throw
  *   `ForegroundServiceStartNotAllowedException` from behind this

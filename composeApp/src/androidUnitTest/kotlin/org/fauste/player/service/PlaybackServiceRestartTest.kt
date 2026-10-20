@@ -24,10 +24,11 @@ import kotlin.test.assertTrue
  *
  * - **Sticky restart (null intent):** the process death killed the
  *   native engine; the fresh process cannot be playing (the mobile core
- *   loads the store's LAST PERSISTED state — which nothing on mobile
- *   ever writes, `player_core.rs`'s "The `Store` is only needed to load
- *   the state at construction and is not retained" — so the honest
- *   answer is the quiet exit: `stopSelf`, NO foreground promotion (the
+ *   loads the store's LAST PERSISTED state — which the core's save
+ *   thread now keeps current, debounced, since Task 3b — with nothing
+ *   on air: an interrupted track restores Paused at its last saved
+ *   position, never Playing, spec §7 — so the honest answer is the
+ *   quiet exit: `stopSelf`, NO foreground promotion (the
  *   startForegroundService obligation does not exist on a system
  *   restart, and API 31+ would refuse the promotion from the
  *   background), no zombie notification (the pinned id is cancelled —

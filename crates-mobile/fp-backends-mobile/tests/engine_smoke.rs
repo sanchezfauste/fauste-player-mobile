@@ -7,7 +7,10 @@
 //! round trip and the queue read (`PlayerCore::playlist`). Phase 4 adds the
 //! queue jump (`Command::SetNext`, the FFI's `set_next`). Phase 5 adds the
 //! entry-id reads the FFI's `get_state` maps (the on-air id and the arm's
-//! consumption at the advance). Android-only; zero tests on the host.
+//! consumption at the advance) and the persistence round trip (Task 3b):
+//! the debounced save lands while the core runs, and a core REPLAUNCH on
+//! the same directories loads the queue — the restart story's truth, on
+//! the device. Android-only; zero tests on the host.
 #![cfg(target_os = "android")]
 
 use std::net::SocketAddr;
@@ -487,4 +490,128 @@ fn the_entry_id_reads_round_trip_on_device() {
     }
 
     drop(core);
+}
+
+/// Phase 5, on-device (Task 3b): the persistence round trip — the restart
+/// story's new truth. The core's save thread (the desktop services
+/// layer's save half, `fp-app/src/services.rs:1274-1303`, ported in
+/// `player_core.rs`) autosaves mutation-debounced, so after an enqueue +
+/// play the store's session file EXISTS on-device while the core still
+/// runs; dropping the core mid-play flushes the final save (the desktop's
+/// shutdown save, `fp-app/src/services.rs:635-639`, with the live
+/// positions); and a core REPLAUNCH on the same directories — the same
+/// store, the same load path the restarted app's engine would run —
+/// loads the queue the user built, with the interrupted track PAUSED at
+/// its last saved position: nothing is ever restored as PLAYING (spec
+/// §7), but a current entry restores Paused while a never-played queue
+/// restores Stopped (`fp-model/src/session.rs:297-301`, the positions
+/// carried by the `LoadPaused` actions the restore produces).
+///
+/// The harness runs Rust test binaries, not the app, so a real
+/// kill-the-process-and-relaunch cannot be driven from here; the relaunch
+/// over the same on-device store is the honest on-device shape of that
+/// pin (the app-level kill/relaunch observation lives in the session
+/// tools, per Task 3).
+#[test]
+fn the_queue_survives_a_core_relaunch_on_device() {
+    let (data, cache) = temp_dirs("persist");
+    let core =
+        PlayerCore::with_save_timing(data.clone(), cache.clone(), Duration::from_millis(200))
+            .expect("core construction on-device");
+    let core_data = data;
+
+    let (player, playlist) = {
+        let model = core.handle().model.load();
+        let player = model.players.first().expect("no players in the state");
+        (player.id, player.playlist)
+    };
+    let wav = tiny_wav(&core_data);
+    assert!(core.handle().send(Command::InsertPaths {
+        playlist,
+        index: usize::MAX, // the reducer clamps: append
+        paths: vec![wav],
+    }));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if core.playlist().len() == 1 {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the queue never showed the entry"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(core.handle().send(Command::Play(player)));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while core
+        .handle()
+        .model
+        .load()
+        .players
+        .first()
+        .map(|p| p.transport)
+        == Some(Transport::Stopped)
+    {
+        assert!(Instant::now() < deadline, "the player never left Stopped");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    // The debounced save landed while the core still runs: the session
+    // file exists on-device (written by the enqueue/play mutations'
+    // quiet save, or by the playing branch — both are the ported
+    // desktop behavior).
+    let session = core_data.join("session.json");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !session.exists() {
+        assert!(
+            Instant::now() < deadline,
+            "the debounced save never wrote session.json on-device"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    // Mid-play drop: the final save flushes with the live positions, the
+    // way the desktop's exit does (`fp-app/src/main.rs:210-217`).
+    drop(core);
+
+    // The relaunch: a fresh core on the same directories must load the
+    // queue — and nothing may be playing in it.
+    let fresh = PlayerCore::new(core_data.clone(), cache)
+        .expect("relaunch on the persisted on-device state");
+    let queue = fresh.playlist();
+    assert_eq!(queue.len(), 1, "the relaunched core must load the queue");
+    let row = queue.first().expect("one row");
+    assert!(
+        row.path.ends_with("tone.wav"),
+        "the persisted track's path: {}",
+        row.path.display()
+    );
+    assert_eq!(row.title, "tone", "the file-stem title survives");
+    // The restart truth, per the desktop's restore authority: the final
+    // save caught the track mid-play, so the relaunch comes back PAUSED
+    // on it — never PLAYING (spec §7: nothing goes on air by itself),
+    // and Paused rather than Stopped because a current entry is
+    // exactly what restores Paused (`fp-model/src/session.rs:297-301`).
+    let (transport, current) = {
+        let model = fresh.handle().model.load();
+        let p = model.players.first().expect("the main player");
+        (p.transport, p.current)
+    };
+    assert_ne!(
+        transport,
+        Transport::Playing,
+        "nothing is ever restored as playing (spec §7)"
+    );
+    assert_eq!(
+        transport,
+        Transport::Paused,
+        "the interrupted track restores Paused at its last saved position"
+    );
+    assert_eq!(
+        current,
+        queue.first().map(|r| r.entry),
+        "the paused player sits on the queue's entry"
+    );
+    drop(fresh);
 }

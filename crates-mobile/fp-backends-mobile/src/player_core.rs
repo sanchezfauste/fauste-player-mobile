@@ -1,5 +1,6 @@
 //! The mobile player core: everything the desktop wires at startup minus the
-//! UI, MIDI and Services layers.
+//! UI, MIDI and Services layers — plus, since Task 3b, the Services layer's
+//! SAVE half (the desktop's authority: `fp-app/src/services.rs`).
 //!
 //! Authority: `fp-app/src/main.rs` (`fn run`, around lines 120-160). The
 //! wiring order here mirrors it line for line:
@@ -15,32 +16,67 @@
 //! conductor.spawn(handle)               // -> ConductorHandle on its thread
 //! AnalysisCache::new(cache_dir/"analysis")
 //! Analyzer::spawn(threads, config.analysis, config.limits, Some(cache))
+//! SessionSaver::spawn(handle, store, SESSION_SAVE_DEBOUNCE)  // Task 3b
 //! fp_remote::spawn(bridge over the handle)  // loopback, ephemeral port
 //! ```
+//!
+//! # The save half (Task 3b)
+//!
+//! The desktop saves in its Services thread (`fp-app/src/services.rs`): the
+//! session mutation-debounced through `autosave`
+//! (`fp-app/src/services.rs:1274-1303`), once more at exit
+//! (`fp-app/src/services.rs:635-639`). The mobile has no Services layer, so
+//! `SessionSaver` below ports that half on its own thread:
+//!
+//! * **The mutation signal** is the conductor's model revision
+//!   (`Telemetry::model_version`, `fp-engine/src/conductor.rs:106-107`):
+//!   every tick that changed the model increments it
+//!   (`fp-engine/src/conductor.rs:341-344`). The desktop's services thread
+//!   reads the same field each step (`fp-app/src/services.rs:570-572`) —
+//!   this is not invented polling of snapshots, it is the conductor's own
+//!   versioned-change signal (the one `fp-remote`'s `Playback.revision`
+//!   publishes too).
+//! * **The save path never touches the RT path.** The thread only ever
+//!   READS `ArcSwap` snapshots (`handle.model.load_full()`,
+//!   `handle.telemetry.load()` — atomic refcount bumps, the same reads the
+//!   remote server's bridge does every request) and writes files. The audio
+//!   callbacks never hear about it.
+//! * **Debounce** [`SESSION_SAVE_DEBOUNCE`], mirroring the desktop's
+//!   `tuning.save_debounce_ms` default.
 //!
 //! # Drop story
 //!
 //! There is no explicit `shutdown`: the owned pieces stop themselves, exactly
 //! as on the desktop, where the end of `run()` drops locals in reverse order
-//! (services/analyzer before the handle). Here the field declaration order
-//! gives the same teardown:
+//! and the exit sequence stops every sender first, then the final save, then
+//! the audio (`fp-app/src/main.rs:210-217`: `drop(remote)`, `midi.shutdown()`,
+//! `services.shutdown()`, `stop_engine(handle)`). Here the field declaration
+//! order gives the same teardown:
 //!
-//! 1. `_analyzer` drops first. `Analyzer::drop` (fp-analysis) sets the shared
+//! 1. `_saver` drops first: the save thread stops and is joined AFTER its
+//!    final save — which still sees the live conductor (the desktop's
+//!    `shutdown()` shape: a fresh model snapshot plus the positions the
+//!    engine reports right now, `fp-app/src/services.rs:635-639`).
+//! 2. `_analyzer` drops second. `Analyzer::drop` (fp-analysis) sets the shared
 //!    stop flag, drops the job senders (closing the queues) and joins every
 //!    worker thread.
-//! 2. `remote` drops second. `RemoteHandle::drop` (fp-remote) signals the
+//! 3. `remote` drops third. `RemoteHandle::drop` (fp-remote) signals the
 //!    remote thread and joins it, closing the HTTP event streams and the
 //!    listener.
-//! 3. `handle` drops last. When the last `Arc<ConductorHandle>` goes,
+//! 4. `handle` drops last. When the last `Arc<ConductorHandle>` goes,
 //!    `ConductorHandle::drop` (fp-engine) sets the stop flag and joins the
 //!    `fp-conductor` thread.
 //!
-//! The `Store` is only needed to load the state at construction and is not
-//! retained, as on the desktop (Task 2's services layer will own one).
+//! The `Store` loaded the state at construction and the save thread holds
+//! the only share of it afterwards (the load half at boot, the save half on
+//! the saver thread — the desktop splits the same way: `main.rs` loads,
+//! `Services` saves).
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Instant;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use fp_analysis::analyzer::Analyzer;
 use fp_analysis::cache::AnalysisCache;
@@ -48,7 +84,8 @@ use fp_backends::{AudioBackend, Availability};
 use fp_engine::conductor::{Conductor, ConductorHandle};
 use fp_engine::engine::{Engine, EngineSettings};
 use fp_engine::worker::file_opener;
-use fp_model::{AppState, Command, EntryId, Limits, TrackId};
+use fp_model::player::Transport;
+use fp_model::{AppState, Command, EntryId, Limits, PlayerId, TrackId};
 use fp_remote::control::{Playback, RemoteControl, WaveformData};
 use fp_remote::server::{RemoteHandle, RemoteStatus, ServerStatus};
 use fp_store::{AppPaths, Store};
@@ -62,11 +99,26 @@ use crate::AaudioBackend;
 /// dependency until Phase 4.
 const DEFAULT_PLAYLIST_NAME: &str = "Playlist 1";
 
-/// The running player: conductor thread, analysis pool and remote server.
+/// The autosave debounce: the desktop's `tuning.save_debounce_ms` default,
+/// 1000.0 (`fp-model/src/config.rs:841`), which its services thread reads
+/// from the live config on every step (`fp-app/src/services.rs:1278-1279`).
+/// The mobile uses a named constant because nothing on mobile writes
+/// `tuning` (no settings surface for it); when one exists, this can become
+/// a config read like the desktop's. This ONE value is also the
+/// while-playing save interval, as on the desktop, whose `session_due`
+/// compares against the same `save_debounce_ms`
+/// (`fp-app/src/services.rs:1296-1298`).
+pub const SESSION_SAVE_DEBOUNCE: Duration = Duration::from_secs(1);
+
+/// The running player: save thread, conductor thread, analysis pool and
+/// remote server.
 pub struct PlayerCore {
-    /// Dropped first on teardown: stops and joins the analysis workers.
+    /// Dropped first on teardown: stops the save thread after its final
+    /// save (see the module docs — the desktop's exit order).
+    _saver: SessionSaver,
+    /// Dropped second: stops and joins the analysis workers.
     _analyzer: Analyzer,
-    /// Dropped second: stops and joins the remote thread.
+    /// Dropped third: stops and joins the remote thread.
     remote: RemoteHandle,
     /// What the remote serves; the same `Arc` the remote thread holds.
     control: Arc<MobileBridge>,
@@ -88,7 +140,7 @@ impl PlayerCore {
     /// from the caller; `config_dir` and `log_dir` sit inside `data_dir`
     /// because mobile has no separate config/log locations.
     pub fn new(data_dir: PathBuf, cache_dir: PathBuf) -> std::io::Result<Arc<PlayerCore>> {
-        Self::with_overrides(data_dir, cache_dir, None, None)
+        Self::core(data_dir, cache_dir, None, None, SESSION_SAVE_DEBOUNCE)
     }
 
     /// As `new`, but `sample_rate`/`buffer_frames` (when `Some`) override the
@@ -103,13 +155,46 @@ impl PlayerCore {
         sample_rate: Option<u32>,
         buffer_frames: Option<u32>,
     ) -> std::io::Result<Arc<PlayerCore>> {
+        Self::core(
+            data_dir,
+            cache_dir,
+            sample_rate,
+            buffer_frames,
+            SESSION_SAVE_DEBOUNCE,
+        )
+    }
+
+    /// As `new`, with the autosave timing injected: the debounce a mutation
+    /// waits for quiet AND the while-playing save interval — one duration,
+    /// because the desktop derives both from the same `save_debounce_ms`
+    /// (`fp-app/src/services.rs:1278-1298`). Tests pass milliseconds
+    /// instead of the 1 s default so a save lands inside a bounded wait
+    /// and the playing interval is observable in milliseconds; production
+    /// callers use [`PlayerCore::new`] and its [`SESSION_SAVE_DEBOUNCE`].
+    pub fn with_save_timing(
+        data_dir: PathBuf,
+        cache_dir: PathBuf,
+        save_debounce: Duration,
+    ) -> std::io::Result<Arc<PlayerCore>> {
+        Self::core(data_dir, cache_dir, None, None, save_debounce)
+    }
+
+    /// The shared body of the public constructors, differing only in the
+    /// engine overrides and the autosave timing.
+    fn core(
+        data_dir: PathBuf,
+        cache_dir: PathBuf,
+        sample_rate: Option<u32>,
+        buffer_frames: Option<u32>,
+        save_debounce: Duration,
+    ) -> std::io::Result<Arc<PlayerCore>> {
         let paths = AppPaths {
             config_dir: data_dir.join("config"),
             log_dir: data_dir.join("logs"),
             data_dir,
             cache_dir,
         };
-        let store = Store::new(paths.clone(), Limits::default());
+        let store = Arc::new(Store::new(paths.clone(), Limits::default()));
         let loaded = store.load(DEFAULT_PLAYLIST_NAME);
         for warning in &loaded.warnings {
             tracing::warn!(%warning, "while loading the saved state");
@@ -170,7 +255,14 @@ impl PlayerCore {
         });
         let remote = fp_remote::spawn(control.clone())?;
 
+        // Task 3b: the save half of the store contract, on its own thread
+        // (never the audio path — see the module docs). Spawned last, so
+        // any earlier failure tears the already-spawned pieces down
+        // through their own Drops without a saver to stop.
+        let saver = SessionSaver::spawn(handle.clone(), store, save_debounce)?;
+
         Ok(Arc::new(PlayerCore {
+            _saver: saver,
             _analyzer: analyzer,
             remote,
             control,
@@ -306,6 +398,198 @@ impl PlayerCore {
             })
             .collect()
     }
+}
+
+/// The save thread's stop signal and join handle. Dropping it stops the
+/// thread and joins it AFTER its final save, so a `PlayerCore` teardown
+/// never returns with unsaved state — the mobile mirror of the desktop's
+/// `services.shutdown()` running before the engine stops
+/// (`fp-app/src/main.rs:216-217`; the final save itself is
+/// `fp-app/src/services.rs:635-639`).
+struct SessionSaver {
+    stop: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl SessionSaver {
+    fn spawn(
+        handle: Arc<ConductorHandle>,
+        store: Arc<Store>,
+        debounce: Duration,
+    ) -> std::io::Result<Self> {
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = stop.clone();
+        let thread = std::thread::Builder::new()
+            .name("fp-session-save".to_owned())
+            .spawn(move || save_loop(handle, store, flag, debounce))?;
+        Ok(Self {
+            stop,
+            thread: Some(thread),
+        })
+    }
+}
+
+impl Drop for SessionSaver {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Release);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+/// The autosave bookkeeping, mirroring the desktop Services fields it
+/// replaces (`saved_version`, `dirty_since`, `last_session_save`,
+/// `fp-app/src/services.rs:431-434` around `saved_version: 0`).
+struct SaveBookkeeping {
+    /// The model revision whose state is on disk.
+    saved_version: u64,
+    /// When the oldest unsaved mutation was first seen.
+    dirty_since: Option<Instant>,
+    /// When the session file was last written (the while-playing clock).
+    last_session_save: Option<Instant>,
+}
+
+/// The save thread's body: a plain non-RT thread. It NEVER touches the
+/// audio path — it reads `ArcSwap` snapshots (atomic refcount bumps, the
+/// same reads the remote bridge does per request) and writes files. A save
+/// that fails is logged and life continues, as on the desktop (every store
+/// error there is `tracing::error!`'d, never propagated,
+/// `fp-app/src/services.rs:1305-1330`); the revision keeps moving on
+/// further mutations, so the next change retries the write.
+fn save_loop(
+    handle: Arc<ConductorHandle>,
+    store: Arc<Store>,
+    stop: Arc<AtomicBool>,
+    debounce: Duration,
+) {
+    // The desktop initialises `saved_version: 0` (`fp-app/src/services.rs:492`)
+    // and so does this port, exactly: the conductor boots at revision 0 —
+    // the restore actions the load produced run in `Conductor::new` before
+    // the first tick (`fp-engine/src/conductor.rs:236-243`) and the revision
+    // only moves in `tick` (`fp-engine/src/conductor.rs:341-344`) — so "0"
+    // means "nothing has changed yet". What DOES legitimately change at
+    // boot, the engine reporting its placements into the live layer over
+    // the first ticks, is saved here too — the same way the desktop's
+    // services thread saves it within its first second.
+    let mut saved = SaveBookkeeping {
+        saved_version: 0,
+        dirty_since: None,
+        last_session_save: None,
+    };
+    let poll = poll_interval(debounce);
+    loop {
+        if stop.load(Ordering::Acquire) {
+            break;
+        }
+        // The version is read before the snapshot, as on the desktop: the
+        // snapshot saved can only be newer than the version recorded as
+        // saved, never older (`fp-app/src/services.rs:570-572`).
+        let version = handle.telemetry.load().model_version;
+        let state = handle.model.load_full();
+        autosave(&store, &handle, &mut saved, &state, version, debounce);
+        std::thread::sleep(poll);
+    }
+    // The final save: a fresh snapshot with the positions the engine
+    // reports right now. The conductor is still running — this thread is
+    // joined from `SessionSaver`'s Drop, which runs before the conductor
+    // handle drops (the module docs' teardown order), mirroring the
+    // desktop's exit: senders stop, then the final save, then the audio
+    // (`fp-app/src/main.rs:210-217`).
+    let state = handle.model.load_full();
+    save_all(&store, &handle, &state);
+}
+
+/// One autosave round: the port of the desktop's `autosave`
+/// (`fp-app/src/services.rs:1274-1303`). A mutation starts the debounce
+/// clock; once the model has been QUIET for `debounce`, everything is
+/// saved and the revision is recorded — recorded only once the files are
+/// written, so a failed save is retried when the next mutation moves the
+/// revision (`fp-app/src/services.rs:1284-1285`). When nothing is dirty
+/// but something PLAYS, the session alone is saved every `debounce`
+/// anyway: positions move without touching the model, so the session
+/// file is the only thing that can track them
+/// (`fp-app/src/services.rs:1292-1302`, the `playing && session_due`
+/// branch).
+fn autosave(
+    store: &Store,
+    handle: &ConductorHandle,
+    saved: &mut SaveBookkeeping,
+    state: &AppState,
+    version: u64,
+    debounce: Duration,
+) {
+    let now = Instant::now();
+    if version != saved.saved_version && saved.dirty_since.is_none() {
+        saved.dirty_since = Some(now);
+    }
+    if saved
+        .dirty_since
+        .is_some_and(|since| now.saturating_duration_since(since) >= debounce)
+    {
+        save_all(store, handle, state);
+        saved.saved_version = version;
+        saved.dirty_since = None;
+        saved.last_session_save = Some(now);
+        return;
+    }
+    let playing = state
+        .players
+        .iter()
+        .any(|p| p.transport == Transport::Playing);
+    let session_due = saved
+        .last_session_save
+        .is_none_or(|last| now.saturating_duration_since(last) >= debounce);
+    if playing && session_due {
+        save_session(store, handle, state);
+        saved.last_session_save = Some(now);
+    }
+}
+
+/// Saves every store file, the desktop's `save_all`
+/// (`fp-app/src/services.rs:1305-1316`): each failure is logged and the
+/// rest still run — a bad cart file must not cost the queue.
+fn save_all(store: &Store, handle: &ConductorHandle, state: &AppState) {
+    if let Err(e) = store.save_config(state) {
+        tracing::error!(error = %e, "saving the configuration failed");
+    }
+    if let Err(e) = store.save_playlists(state) {
+        tracing::error!(error = %e, "saving the playlists failed");
+    }
+    if let Err(e) = store.save_carts(state) {
+        tracing::error!(error = %e, "saving the cart pages failed");
+    }
+    save_session(store, handle, state);
+}
+
+/// Saves the session file, the desktop's `save_session`
+/// (`fp-app/src/services.rs:1318-1331`): the positions come from the
+/// conductor's telemetry right now, and a failure is logged, not raised.
+fn save_session(store: &Store, handle: &ConductorHandle, state: &AppState) {
+    let telemetry = handle.telemetry.load();
+    let position_of = |player: PlayerId| {
+        telemetry
+            .players
+            .iter()
+            .find(|(id, _)| *id == player)
+            .and_then(|(_, t)| t.position_secs)
+            .unwrap_or(0.0)
+    };
+    if let Err(e) = store.save_session(state, position_of) {
+        tracing::error!(error = %e, "saving the session failed");
+    }
+}
+
+/// How often the save thread wakes to check the revision. The desktop's
+/// services thread runs its whole step every 50 ms (`PERIOD`,
+/// `fp-app/src/services.rs:26`); this thread only compares an integer and
+/// maybe bumps an `Arc` between saves, so its cadence scales with the
+/// debounce instead: a quarter of it, clamped to [10 ms, 250 ms]. The 1 s
+/// desktop default polls at 4 Hz — a phone-friendly cadence — while a
+/// test-injected short debounce gets a proportionally fine one, which
+/// also keeps the final save on Drop within a fraction of the debounce.
+fn poll_interval(debounce: Duration) -> Duration {
+    Duration::from_secs_f64((debounce.as_secs_f64() / 4.0).clamp(0.01, 0.25))
 }
 
 /// Why a backend switch was refused.

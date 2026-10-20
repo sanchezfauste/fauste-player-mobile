@@ -74,24 +74,27 @@ import kotlin.coroutines.cancellation.CancellationException
  *   START_STICKY service the system killed comes back with a NULL
  *   intent — and the process death killed the native engine with it,
  *   so the fresh process cannot be playing. What the fresh engine
- *   loads is the store's LAST PERSISTED state, and on mobile nothing
- *   ever persists it: the mobile core wires the store's LOAD only
- *   (`player_core.rs`, "The `Store` is only needed to load the state
- *   at construction and is not retained" — the desktop's save layer,
- *   `fp-app/src/services.rs`'s debounced autosave on mutation + the
- *   while-playing session save + the final save on exit, has NO
- *   mobile counterpart), so the queue the user built lived only in
- *   memory and the restart re-attaches to the store's defaults,
- *   transport stopped. The honest behavior TODAY is therefore
- *   [quietExitAfterStickyRestart]: `stopSelf` with NO foreground
- *   promotion (a system restart carries no startForegroundService
- *   obligation, and API 31+ would refuse a background promotion —
- *   the stop-path dance must not run) and NO zombie notification
- *   (the pinned id is cancelled: the pre-kill notification can
- *   outlive its process in the drawer). A real session-rebuild — the
- *   store's queue re-attached with transport stopped, no auto-resume
- *   — is what a future mobile save layer unlocks; the load half of
- *   that surface already exists in the core.
+ *   loads is the store's LAST PERSISTED state, which the mobile core
+ *   now keeps current on its own (Task 3b): `player_core.rs`'s save
+ *   thread autosaves mutation-debounced (~1 s), during playback at
+ *   intervals, and once at shutdown — the port of the desktop's save
+ *   layer (`fp-app/src/services.rs`'s `autosave` + the shutdown save).
+ *   The queue the user built therefore SURVIVES the kill up to the
+ *   last save — a SIGKILL mid-mutation can lose at most the debounce
+ *   window, and a clean exit loses nothing (the final save runs
+ *   before the engine stops) — and the restart re-attaches to it with
+ *   nothing on air, no auto-resume: the interrupted track comes back
+ *   PAUSED at its last saved position, a never-played queue comes
+ *   back stopped, and nothing is ever restored as PLAYING (spec §7,
+ *   `fp-model/src/session.rs:297-301`). The honest behavior is
+ *   still [quietExitAfterStickyRestart]: the queue's survival changes
+ *   nothing about the notification — the fresh process cannot be
+ *   playing, so it `stopSelf`s with NO foreground promotion (a system
+ *   restart carries no startForegroundService obligation, and API 31+
+ *   would refuse a background promotion — the stop-path dance must
+ *   not run) and NO zombie notification (the pinned id is cancelled:
+ *   the pre-kill notification can outlive its process in the
+ *   drawer). The next Play serves the re-attached queue.
  *
  * - **The keep-awake gate** (the review's freeze finding): the service
  *   holds the controller's poll open while it runs —
@@ -326,7 +329,10 @@ class PlaybackService : MediaSessionService() {
      * - **Null intent = the system restarted a killed service.** The
      *   quiet exit runs ([quietExitAfterStickyRestart]): nothing can
      *   be playing in a process that just booted (the engine died with
-     *   the old one; the store's defaults load stopped), and a
+     *   the old one; the store's last saved state — the user's queue,
+     *   kept current by the core's debounced save, Task 3b — loads
+     *   with nothing on air: an interrupted track restores Paused at
+     *   its last saved position, never Playing), and a
      *   notification-less background service waiting to be killed
      *   again would be exactly the zombie Ruling 4 forbids.
      * - **Non-null intent = an explicit start** (the app starter, or a
