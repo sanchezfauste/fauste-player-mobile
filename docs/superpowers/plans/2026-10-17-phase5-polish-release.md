@@ -51,6 +51,20 @@
 - [ ] Restart semantics per Ruling 4: `START_STICKY` + `onStartCommand` re-derive, honestly documenting what a sticky restart gives (a service with no engine — process death killed it; the honest behavior is a quiet exit or a session-rebuild when the store/session surface exists — read what the desktop persists; TODAY: document + exit cleanly, no zombie notification).
 - [ ] **Commit** — `feat(mobile): lifecycle-aware collection and honest restart semantics`
 
+### Task 3b: Session persistence — the mobile save layer (Rust, TDD)
+
+> Added from Task 3's verified investigation: the desktop autosaves the session mutation-debounced (~1 s, `fp-app/src/services.rs:1274-1303`, `save_debounce_ms: 1000.0`), during playback at intervals, and once at shutdown (`:635-639`); the mobile is LOAD-only — imported queues die with the process. This task ports the save half so the sticky-restart re-attach becomes meaningful and restarts keep the user's queue.
+
+**Files:** `crates-mobile/fp-backends-mobile/src/player_core.rs` (+ tests), `tests/engine_smoke.rs`; read `../fauste-player/crates/fp-store/src/store.rs` (`save`) + the desktop's services.rs save trigger as the authority.
+
+- [ ] Investigate the store's `save` surface (what it takes — the AppState? a session DTO? the desktop's call shape at services.rs:1274-1303) and the conductor's model-revision signal (the ArcSwap revision — is there a monotonically increasing revision the mobile can watch to detect mutations, the way `fp-remote`'s events do? Cite).
+- [ ] Implement in PlayerCore: a non-RT save thread (or a task in the runtime): watches model revisions, debounces ~1 s (a named constant citing the desktop's), saves on quiet; a while-playing interval per the desktop's `playing && session_due` branch; a final save on Drop/shutdown (mirror the desktop's shutdown save order — read main.rs's exit order). The save path must never touch the RT path (it reads a snapshot; document).
+- [ ] TDD host: enqueue → wait past the debounce → the store files appear/reflect the queue; a fresh PlayerCore on the same dirs loads the queue (the round-trip pin); drop → the final save flushed; while-playing interval pinned with a short test constant (injectable).
+- [ ] Emulator: the smoke extends — after enqueue+play, kill the process (the script's SIGKILL), relaunch, assert the queue survived (the restart story's new truth); `./scripts/emulator-test.sh` green.
+- [ ] **Commit** — `feat(mobile): debounced session persistence for the player core`
+
+---
+
 ### Task 4: Crash reporting (Rust + Kotlin)
 
 - [ ] Investigate the desktop's crash machinery (Ruling 5) — the store's crash dir + `max_crash_reports` cap. Implement the Rust panic hook (FFI init installs it; writes a report file; non-RT path only — a panic hook may allocate freely).
