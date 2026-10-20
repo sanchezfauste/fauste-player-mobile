@@ -1,8 +1,11 @@
 package org.fauste.player.service
 
 import android.app.Application
+import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.Shadows.shadowOf
@@ -10,6 +13,7 @@ import org.robolectric.annotation.Config
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -37,8 +41,11 @@ import kotlin.test.assertTrue
  * PlaybackServiceNotificationIntentTest precedent) — onStartCommand's
  * decision seam needs no Koin machinery, and onCreate's off-main build
  * must not race the assertions. What the unit lane honestly pins is the
- * DECISION + its exit; the real sticky delivery (process death, the
- * system's restart timing, the notification's drawer lifetime) is the
+ * DECISION + its exit — the pinned-id cancel included, recorded by the
+ * notification-manager shadow (the pre-kill notification is posted on
+ * id 1001 and must be gone after the quiet exit); the real sticky
+ * delivery (process death, the system's restart timing, the
+ * notification's drawer lifetime) is the
  * on-emulator kill/restart observation in the Task-3 report.
  */
 @RunWith(org.robolectric.RobolectricTestRunner::class)
@@ -47,6 +54,25 @@ class PlaybackServiceRestartTest {
     @Test
     fun aStickyRestartQuietlyExitsWithNoForegroundPromotion() {
         val service = Robolectric.buildService(PlaybackService::class.java).get()
+        val drawer = shadowOf(service.getSystemService(NotificationManager::class.java))
+
+        // The drawer zombie the quiet exit exists to bury: the killed
+        // process's notification on the pinned playback id
+        // (PlaybackService.PLAYBACK_NOTIFICATION_ID — media3's
+        // DEFAULT_NOTIFICATION_ID, 1001) can outlive its process,
+        // pointing at a session that died with it. Post it first —
+        // the pin needs something in the drawer to cancel.
+        NotificationManagerCompat.from(service).notify(
+            1001,
+            NotificationCompat
+                .Builder(service, "playback")
+                .setSmallIcon(org.fauste.player.R.drawable.ic_playback_notification)
+                .build(),
+        )
+        assertNotNull(
+            drawer.getNotification(1001),
+            "the pre-kill notification must be in the drawer for the pin to bite",
+        )
 
         // The system's restart signature: onCreate ran, the intent is
         // null ("the service was killed and is being restarted").
@@ -60,6 +86,10 @@ class PlaybackServiceRestartTest {
         assertNull(
             shadowOf(service).lastForegroundNotification,
             "the quiet exit must not run the stop-path foreground dance — a system restart carries no startForegroundService obligation",
+        )
+        assertNull(
+            drawer.getNotification(1001),
+            "the quiet exit must cancel the pinned id — the pre-kill notification can outlive the process in the drawer, and pointing at a session that died with the old process is a zombie",
         )
     }
 
