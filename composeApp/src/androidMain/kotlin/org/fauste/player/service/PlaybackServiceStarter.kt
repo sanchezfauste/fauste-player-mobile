@@ -30,10 +30,13 @@ import kotlin.coroutines.cancellation.CancellationException
  *   service, and re-firing is what heals a service the system killed
  *   mid-pause.
  * - Known limit, documented honestly: a service killed by the system
- *   WHILE playing stays dead until the next distinct status change
- *   (a killing FGS mid-playback is exactly the case the platform
- *   avoids; a paused notification swiped away already exits through
- *   media3's own dismissal path).
+ *   WHILE playing leaves playback dead with it (process death kills
+ *   the native engine). The system DOES restart the sticky service,
+ *   which exits quietly with nothing to serve (PlaybackService's
+ *   restart-semantics KDoc); the notification returns only with the
+ *   next Play, whose distinct Playing phase re-arms this trigger (a
+ *   paused notification swiped away already exits through media3's
+ *   own dismissal path).
  * - A REFUSED start is log-and-skip, never fatal (the final review's
  *   F2 finding): API 31+ can throw
  *   `ForegroundServiceStartNotAllowedException` from behind this

@@ -48,6 +48,17 @@ kotlin {
         androidMain {
             dependencies {
                 implementation(libs.androidx.activity.compose)
+                // LIFECYCLE-AWARE COLLECTION (Task 3, Ruling 3): the
+                // screens' commonMain helper's ANDROID actual —
+                // collectAsStateWithLifecycle — lives in
+                // androidx.lifecycle:lifecycle-runtime-compose. The
+                // dependency is androidMain-only per the ruling: common
+                // code sees the expect/actual seam (ui/
+                // LifecycleAwareCollection.kt), never an androidx
+                // import; 2.9.4 is the lifecycle line the classpath
+                // already resolves via activity-compose (see
+                // libs.versions.toml's pin note).
+                implementation(libs.androidx.lifecycle.runtime.compose)
                 // media3 (Task 6): MediaSessionService is the foreground
                 // service base the playback service extends; media3-common
                 // carries SimpleBasePlayer, the Player base the service's

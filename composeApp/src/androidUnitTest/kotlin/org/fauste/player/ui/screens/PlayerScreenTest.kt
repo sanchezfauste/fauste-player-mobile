@@ -1,6 +1,7 @@
 package org.fauste.player.ui.screens
 
 import android.app.Application
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -9,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -22,6 +24,7 @@ import org.fauste.player.player.playlistEntry
 import org.fauste.player.player.track
 import org.fauste.player.repository.PlaylistRepository
 import org.fauste.player.rust.FausteException
+import org.fauste.player.ui.ScreenTestLifecycleOwner
 import org.fauste.player.ui.theme.FausteTheme
 import org.fauste.player.viewmodel.PlayerViewModel
 import org.junit.After
@@ -40,6 +43,12 @@ import kotlin.test.assertEquals
  * intents-up path — the screen renders what the pipeline publishes, and a
  * control tap reaches the engine exactly once.
  *
+ * THE OWNER PATTERN (Task 3): the screen collects its state flow through the
+ * lifecycle-aware helper, so every composition here runs under an explicit
+ * [ScreenTestLifecycleOwner] (RESUMED) provided as the composition's
+ * LifecycleOwner — deterministic, and the same wiring the ON_STOP/ON_START
+ * pin drives in [org.fauste.player.ui.LifecycleAwareCollectionTest].
+ *
  * Real-time lane (no virtual clock here): the controller polls the double
  * from Dispatchers.IO at the default 100 ms period, so each test waits for
  * the composition with `waitUntil` instead of sleeps. The commit debounce
@@ -53,6 +62,8 @@ import kotlin.test.assertEquals
 class PlayerScreenTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    private val lifecycleOwner = ScreenTestLifecycleOwner()
 
     private lateinit var engine: ScriptedEngine
     private lateinit var controller: PlayerController
@@ -100,8 +111,10 @@ class PlayerScreenTest {
     @Test
     fun rendersThePlayingState() {
         composeRule.setContent {
-            FausteTheme {
-                PlayerScreen(viewModel)
+            CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
+                FausteTheme {
+                    PlayerScreen(viewModel)
+                }
             }
         }
 
@@ -119,8 +132,10 @@ class PlayerScreenTest {
     @Test
     fun playPauseTapReachesTheEngine() {
         composeRule.setContent {
-            FausteTheme {
-                PlayerScreen(viewModel)
+            CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
+                FausteTheme {
+                    PlayerScreen(viewModel)
+                }
             }
         }
         composeRule.waitUntil(TIMEOUT_MILLIS) {
@@ -138,8 +153,10 @@ class PlayerScreenTest {
     @Test
     fun seekDragShowsPendingInstantlyAndCommitsOnce() {
         composeRule.setContent {
-            FausteTheme {
-                PlayerScreen(viewModel)
+            CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
+                FausteTheme {
+                    PlayerScreen(viewModel)
+                }
             }
         }
         composeRule.waitUntil(TIMEOUT_MILLIS) {
@@ -166,8 +183,10 @@ class PlayerScreenTest {
     fun aDroppedCommandSurfacesAnErrorOnScreen() {
         engine.pauseError = FausteException.Busy()
         composeRule.setContent {
-            FausteTheme {
-                PlayerScreen(viewModel)
+            CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
+                FausteTheme {
+                    PlayerScreen(viewModel)
+                }
             }
         }
         composeRule.waitUntil(TIMEOUT_MILLIS) {
@@ -186,8 +205,10 @@ class PlayerScreenTest {
     fun theUpNextLineRendersTheArmedRowsTitleUnderTheControls() {
         engine.state.value = engine.state.value.copy(armedEntryId = 2u)
         composeRule.setContent {
-            FausteTheme {
-                PlayerScreen(viewModel)
+            CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
+                FausteTheme {
+                    PlayerScreen(viewModel)
+                }
             }
         }
 
@@ -199,8 +220,10 @@ class PlayerScreenTest {
     @Test
     fun theUpNextLineHidesWhileNothingIsArmed() {
         composeRule.setContent {
-            FausteTheme {
-                PlayerScreen(viewModel)
+            CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
+                FausteTheme {
+                    PlayerScreen(viewModel)
+                }
             }
         }
         composeRule.waitUntil(TIMEOUT_MILLIS) {

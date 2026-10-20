@@ -1,5 +1,6 @@
 package org.fauste.player.ui.screens
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -8,6 +9,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -21,6 +23,7 @@ import org.fauste.player.repository.SettingsRepository
 import org.fauste.player.rust.BackendInfo
 import org.fauste.player.rust.FausteException
 import org.fauste.player.rust.RemoteInfo
+import org.fauste.player.ui.ScreenTestLifecycleOwner
 import org.fauste.player.ui.theme.FausteTheme
 import org.fauste.player.viewmodel.SettingsViewModel
 import org.junit.After
@@ -46,6 +49,11 @@ import kotlin.test.assertEquals
  * defaults — sdk 36 and the BARE Application. The whole graph here is
  * hand-built (no Koin), so the default is what makes the suite safe.
  *
+ * THE OWNER PATTERN (Task 3): the screen collects lifecycle-aware, so
+ * [render] runs every composition under an explicit
+ * [ScreenTestLifecycleOwner] (RESUMED) as the composition's
+ * LifecycleOwner — the pattern's rationale in PlayerScreenTest's KDoc.
+ *
  * Real-time lane (no virtual clock): the controller polls the double
  * from Dispatchers.IO at the 100 ms period and the volume commit's
  * debounce is a real 200 ms, so each test waits with `waitUntil`
@@ -55,6 +63,8 @@ import kotlin.test.assertEquals
 class SettingsScreenTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    private val lifecycleOwner = ScreenTestLifecycleOwner()
 
     private lateinit var engine: ScriptedEngine
     private lateinit var controller: PlayerController
@@ -96,8 +106,10 @@ class SettingsScreenTest {
 
     private fun render() {
         composeRule.setContent {
-            FausteTheme {
-                SettingsScreen(viewModel)
+            CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
+                FausteTheme {
+                    SettingsScreen(viewModel)
+                }
             }
         }
     }

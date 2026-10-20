@@ -20,22 +20,23 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import org.fauste.player.ui.collectUiStateWithLifecycle
 import org.fauste.player.viewmodel.SettingsViewModel
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
  * The Settings screen, spec §5's UDF end for the backend picker, the
  * remote status and the volume: [SettingsViewModel]'s single state
- * stream down (via [collectAsState]), intents up (method references
- * into the VM) — NO engine or repository call ever happens in the
- * composition.
+ * stream down (via [collectUiStateWithLifecycle] — lifecycle-aware
+ * collection; the helper's KDoc holds the battery contract), intents up
+ * (method references into the VM) — NO engine or repository call ever
+ * happens in the composition.
  *
  * THE BACKEND ROWS ARE HONEST ABOUT AVAILABILITY: a row shows the
  * probed name + availability and is DISABLED while unavailable — the
@@ -58,7 +59,7 @@ import org.koin.compose.viewmodel.koinViewModel
  */
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
-    val state by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectUiStateWithLifecycle()
     Column(
         modifier =
             Modifier

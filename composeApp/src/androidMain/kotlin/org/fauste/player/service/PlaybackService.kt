@@ -3,6 +3,7 @@ package org.fauste.player.service
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
@@ -68,6 +69,29 @@ import kotlin.coroutines.cancellation.CancellationException
  *   and the first promotion), then the pinned notification id is
  *   cancelled and the service stops. The next Play restarts it
  *   through the same starter.
+ *
+ * - **Sticky restart → quiet exit** (Ruling 4; [onStartCommand]): a
+ *   START_STICKY service the system killed comes back with a NULL
+ *   intent — and the process death killed the native engine with it,
+ *   so the fresh process cannot be playing. What the fresh engine
+ *   loads is the store's LAST PERSISTED state, and on mobile nothing
+ *   ever persists it: the mobile core wires the store's LOAD only
+ *   (`player_core.rs`, "The `Store` is only needed to load the state
+ *   at construction and is not retained" — the desktop's save layer,
+ *   `fp-app/src/services.rs`'s debounced autosave on mutation + the
+ *   while-playing session save + the final save on exit, has NO
+ *   mobile counterpart), so the queue the user built lived only in
+ *   memory and the restart re-attaches to the store's defaults,
+ *   transport stopped. The honest behavior TODAY is therefore
+ *   [quietExitAfterStickyRestart]: `stopSelf` with NO foreground
+ *   promotion (a system restart carries no startForegroundService
+ *   obligation, and API 31+ would refuse a background promotion —
+ *   the stop-path dance must not run) and NO zombie notification
+ *   (the pinned id is cancelled: the pre-kill notification can
+ *   outlive its process in the drawer). A real session-rebuild — the
+ *   store's queue re-attached with transport stopped, no auto-resume
+ *   — is what a future mobile save layer unlocks; the load half of
+ *   that surface already exists in the core.
  *
  * - **The keep-awake gate** (the review's freeze finding): the service
  *   holds the controller's poll open while it runs —
@@ -149,9 +173,13 @@ class PlaybackService : MediaSessionService() {
      * THE GATE-LEAK RACE GUARD (the final review's folded finding):
      * `Service` contexts have no `isDestroyed()` — that is an
      * Activity-only API (verified against the android.jar) — so this is
-     * ours, set FIRST in [onDestroy] and checked at the top of the
-     * session-build runnable. Both run on the main looper, so looper
-     * ordering (not volatile memory) is what makes the flag sound.
+     * ours, set FIRST in [onDestroy] AND in the sticky-restart quiet
+     * exit ([quietExitAfterStickyRestart]), and checked at the top of
+     * the session-build runnable. Everything runs on the main looper,
+     * so looper ordering (not volatile memory) is what makes the flag
+     * sound. Either raiser means the same thing: this service instance
+     * is going away — a build still in flight must bail instead of
+     * re-opening the keep-awake gate under a dying service.
      */
     private var isDestroyed = false
 
@@ -284,6 +312,68 @@ class PlaybackService : MediaSessionService() {
 
     /** The session once built; null during the off-main build window (the class KDoc's honest cold-start note). */
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
+
+    /**
+     * RESTART SEMANTICS (Ruling 4 — the class KDoc's sticky-restart
+     * bullet holds the investigated story): START_STICKY is PINNED as
+     * this service's contract, both branches, rather than inherited
+     * from media3 — the 1.11.1 bytecode returns the same (`iconst_1` =
+     * [Service.START_STICKY] on both the null-intent and the
+     * no-session paths, verified in the AAR), but the contract that
+     * matters after a kill is the SYSTEM's to honor, so it is stated
+     * here, not assumed of a private choice.
+     *
+     * - **Null intent = the system restarted a killed service.** The
+     *   quiet exit runs ([quietExitAfterStickyRestart]): nothing can
+     *   be playing in a process that just booted (the engine died with
+     *   the old one; the store's defaults load stopped), and a
+     *   notification-less background service waiting to be killed
+     *   again would be exactly the zombie Ruling 4 forbids.
+     * - **Non-null intent = an explicit start** (the app starter, or a
+     *   media-button route media3's super forwards to the session):
+     *   the normal build/promotion path, and the service stays up for
+     *   the session build to land.
+     */
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int,
+    ): Int {
+        if (intent == null) {
+            quietExitAfterStickyRestart()
+            return START_STICKY
+        }
+        // media3's own routing (media-button events to the session; the
+        // stale-intent self-termination guard) — never bypassed.
+        super.onStartCommand(intent, flags, startId)
+        return START_STICKY
+    }
+
+    /**
+     * The sticky-restart half of Ruling 4's quiet exit. Runs ON the main
+     * looper (onStartCommand), so it is serialized with the session-build
+     * runnable by looper order — and it raises [isDestroyed] FIRST so a
+     * build that was still in flight (onCreate's off-main resolution
+     * racing the restart delivery) bails at its guard instead of
+     * re-opening the keep-awake gate under a dying service. No
+     * [stopSelfSafelyAndClearNotification] dance here: the dance exists
+     * to satisfy a startForegroundService obligation, and a system
+     * restart carries none — worse, the dance's `startForeground` from
+     * a background-restarted service is exactly the API 31+ promotion
+     * the platform refuses (`ForegroundServiceStartNotAllowedException`,
+     * an IllegalStateException — the dance would catch it and log),
+     * so a "safe" dance would turn into a caught-and-logged refusal,
+     * not a stop. The pinned notification id IS cancelled: the pre-kill
+     * notification can outlive its process in the drawer, and pointing
+     * at a session that died with the old process would be a zombie.
+     */
+    private fun quietExitAfterStickyRestart() {
+        isDestroyed = true
+        Log.i(LOG_TAG, "sticky restart after process death: nothing can be playing — exiting quietly (no notification, no promotion)")
+        controller?.setPlaybackServiceActive(false)
+        NotificationManagerCompat.from(this).cancel(PLAYBACK_NOTIFICATION_ID)
+        stopSelf()
+    }
 
     /**
      * Ruling 5's Stop half, at media3's single notification funnel: a

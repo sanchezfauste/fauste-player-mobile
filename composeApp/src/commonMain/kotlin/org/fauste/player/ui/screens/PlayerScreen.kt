@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,6 +22,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import org.fauste.player.ui.collectUiStateWithLifecycle
 import org.fauste.player.ui.components.PlayerControls
 import org.fauste.player.ui.theme.NocturneColors
 import org.fauste.player.viewmodel.PlayerViewModel
@@ -30,9 +30,12 @@ import org.koin.compose.viewmodel.koinViewModel
 
 /**
  * The Player screen, spec §5's UDF end: [PlayerViewModel]'s single state
- * stream down (via [collectAsState]), intents up (method references into the
- * VM) — NO engine call ever happens in the composition, so nothing here can
- * jank or crash the frame; even the ViewModel is resolved through Koin
+ * stream down (via [collectUiStateWithLifecycle] — lifecycle-aware
+ * collection: ON_STOP stops the recomposition while the state layer
+ * itself keeps running; the helper's KDoc holds the battery contract),
+ * intents up (method references into the VM) — NO engine call ever
+ * happens in the composition, so nothing here can jank or crash the
+ * frame; even the ViewModel is resolved through Koin
  * ([koinViewModel]) by default rather than looked up ad hoc.
  *
  * Honest limits: the title is the state's em dash while no track is on air
@@ -53,7 +56,7 @@ import org.koin.compose.viewmodel.koinViewModel
  */
 @Composable
 fun PlayerScreen(viewModel: PlayerViewModel = koinViewModel()) {
-    val state by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectUiStateWithLifecycle()
     Column(
         modifier =
             Modifier

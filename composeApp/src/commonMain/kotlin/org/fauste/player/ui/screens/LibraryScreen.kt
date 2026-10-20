@@ -20,7 +20,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,6 +27,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import org.fauste.player.ui.collectUiStateWithLifecycle
 import org.fauste.player.ui.components.TrackRow
 import org.fauste.player.viewmodel.LibraryImport
 import org.fauste.player.viewmodel.LibraryViewModel
@@ -35,9 +35,10 @@ import org.koin.compose.viewmodel.koinViewModel
 
 /**
  * The Library screen, spec §5's UDF end for the queue: [LibraryViewModel]'s
- * single state stream down (via [collectAsState]), intents up (method
- * references into the VM) — NO engine or repository call ever happens in
- * the composition.
+ * single state stream down (via [collectUiStateWithLifecycle] —
+ * lifecycle-aware collection; the helper's KDoc holds the battery
+ * contract), intents up (method references into the VM) — NO engine or
+ * repository call ever happens in the composition.
  *
  * THE IMPORT SEAM (documented, as the plan asks): the Import button does
  * not open the picker itself. It fires [onImportClick], which the host
@@ -71,7 +72,7 @@ fun LibraryScreen(
     onImportClick: () -> Unit,
     viewModel: LibraryViewModel = koinViewModel(),
 ) {
-    val state by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectUiStateWithLifecycle()
     Column(
         modifier =
             Modifier

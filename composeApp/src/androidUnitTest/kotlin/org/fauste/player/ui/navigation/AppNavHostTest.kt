@@ -2,11 +2,13 @@ package org.fauste.player.ui.navigation
 
 import android.app.Application
 import android.content.ContextWrapper
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -27,6 +29,7 @@ import org.fauste.player.repository.PlaylistRepository
 import org.fauste.player.repository.SettingsRepository
 import org.fauste.player.rust.BackendInfo
 import org.fauste.player.rust.FausteEngineInterface
+import org.fauste.player.ui.ScreenTestLifecycleOwner
 import org.fauste.player.ui.theme.FausteTheme
 import org.junit.After
 import org.junit.Before
@@ -59,6 +62,12 @@ import kotlin.test.assertEquals
  * the Library's Import button fires the host seam the Activity supplies
  * (the launchers themselves are the Activity's manually-verified part —
  * see LibraryScreen's KDoc).
+ *
+ * THE OWNER PATTERN (Task 3): the screens collect lifecycle-aware now,
+ * so the whole shell runs under an explicit [ScreenTestLifecycleOwner]
+ * (RESUMED) as the composition's LifecycleOwner — the pattern's
+ * rationale in PlayerScreenTest's KDoc; this suite is the shell-level
+ * consumer of the same wiring.
  */
 @RunWith(RobolectricTestRunner::class)
 // A bare Application instead of the manifest's FausteApplication: this suite
@@ -68,6 +77,8 @@ import kotlin.test.assertEquals
 class AppNavHostTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    private val lifecycleOwner = ScreenTestLifecycleOwner()
 
     private lateinit var engine: ScriptedEngine
 
@@ -102,9 +113,11 @@ class AppNavHostTest {
     @Test
     fun playerRendersThroughTheKoinWiring() {
         composeRule.setContent {
-            KoinContext {
-                FausteTheme {
-                    AppNavHost(onImportClick = {})
+            CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
+                KoinContext {
+                    FausteTheme {
+                        AppNavHost(onImportClick = {})
+                    }
                 }
             }
         }
@@ -120,9 +133,11 @@ class AppNavHostTest {
     @Test
     fun allThreeTabsAreLabeledAndReachable() {
         composeRule.setContent {
-            KoinContext {
-                FausteTheme {
-                    AppNavHost(onImportClick = {})
+            CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
+                KoinContext {
+                    FausteTheme {
+                        AppNavHost(onImportClick = {})
+                    }
                 }
             }
         }
@@ -166,9 +181,11 @@ class AppNavHostTest {
     fun theLibraryTabRendersThroughTheKoinWiringAndFiresTheImportSeam() {
         var importClicks = 0
         composeRule.setContent {
-            KoinContext {
-                FausteTheme {
-                    AppNavHost(onImportClick = { importClicks++ })
+            CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
+                KoinContext {
+                    FausteTheme {
+                        AppNavHost(onImportClick = { importClicks++ })
+                    }
                 }
             }
         }
