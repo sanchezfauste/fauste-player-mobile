@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import org.fauste.player.crash.CrashReportHandler
 import org.fauste.player.di.appModule
 import org.fauste.player.di.viewModelModule
 import org.fauste.player.player.PlayerController
@@ -40,12 +41,22 @@ import kotlin.coroutines.cancellation.CancellationException
  * engine calls [startForegroundService] on [PlaybackService]. The
  * starter's own KDoc documents why the trigger is the ENGINE's
  * observed status, not a play command.
+ *
+ * THE CRASH HANDLER (Phase 5, Ruling 5): installed FIRST, before any
+ * wiring below can throw, so every later exception — Koin's, the
+ * service trigger's, any coroutine's — reaches it. [CrashReportHandler]
+ * writes `filesDir/crash/` reports (pruned to the desktop's
+ * `max_crash_reports` default) and chains the system's handler; the
+ * RUST half of the story (a panic hook into `filesDir/logs/`, the
+ * desktop's machinery verbatim) installs with the engine inside the
+ * FFI constructor.
  */
 class FausteApplication : Application() {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
         super.onCreate()
+        CrashReportHandler.install(this)
         startKoin {
             androidContext(this@FausteApplication)
             modules(appModule(), viewModelModule)

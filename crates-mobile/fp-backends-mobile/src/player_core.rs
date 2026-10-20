@@ -72,7 +72,7 @@
 //! the saver thread — the desktop splits the same way: `main.rs` loads,
 //! `Services` saves).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
@@ -109,6 +109,16 @@ const DEFAULT_PLAYLIST_NAME: &str = "Playlist 1";
 /// compares against the same `save_debounce_ms`
 /// (`fp-app/src/services.rs:1296-1298`).
 pub const SESSION_SAVE_DEBOUNCE: Duration = Duration::from_secs(1);
+
+/// The store's log directory inside `data_dir` — the one place this
+/// crate spells the layout that [`PlayerCore::core`]'s `AppPaths` builds
+/// (`log_dir` there) and the crash hook writes to (the desktop writes
+/// its `crash-*.txt` reports into `paths.log_dir`,
+/// `fp-app/src/crash.rs:66`, and the mobile's FFI constructor passes
+/// the same directory to `crash::install_panic_hook_once`).
+pub fn log_dir(data_dir: &Path) -> PathBuf {
+    data_dir.join("logs")
+}
 
 /// The running player: save thread, conductor thread, analysis pool and
 /// remote server.
@@ -190,7 +200,7 @@ impl PlayerCore {
     ) -> std::io::Result<Arc<PlayerCore>> {
         let paths = AppPaths {
             config_dir: data_dir.join("config"),
-            log_dir: data_dir.join("logs"),
+            log_dir: log_dir(&data_dir),
             data_dir,
             cache_dir,
         };

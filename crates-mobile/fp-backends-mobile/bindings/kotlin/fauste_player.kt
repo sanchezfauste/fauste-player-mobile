@@ -1176,7 +1176,7 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_fp_backends_mobile_checksum_method_fausteengine_stop() != 63300.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_fp_backends_mobile_checksum_constructor_fausteengine_new() != 55297.toShort()) {
+    if (lib.uniffi_fp_backends_mobile_checksum_constructor_fausteengine_new() != 35103.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -1795,6 +1795,15 @@ open class FausteEngine :
      * `sample_rate`/`buffer_frames` fields of `config` override the loaded
      * configuration at boot (`PlayerCore::with_overrides`); Phase 3's
      * settings UI will own them afterwards.
+     *
+     * First installs the crash panic hook (Phase 5, `crate::crash`):
+     * BEFORE the core construction, exactly as the desktop installs it
+     * before `run` (`fp-app/src/main.rs:93-103`), so a panic while the
+     * store/engine/conductor wire up is reported too. The hook is
+     * process-global and installed at most once — later constructions
+     * (tests construct repeatedly) keep the first install. Reports go
+     * to the store's log dir under `data_dir`, and the cap starts at
+     * `Limits::default().max_crash_reports` (20, `fp-model/src/config.rs`).
      *
      * Non-blocking-exempt: construction loads the store, spawns the
      * conductor thread, the analysis pool and the remote server —

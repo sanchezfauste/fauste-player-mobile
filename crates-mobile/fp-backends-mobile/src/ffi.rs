@@ -17,14 +17,15 @@
 //! Status strings mirror the remote DTO (`fp-remote/src/dto.rs:361-363`):
 //! `"playing"` / `"paused"` / `"stopped"`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use fp_backends::Availability;
 use fp_model::player::Transport;
-use fp_model::{AppState, Command, EntryId};
+use fp_model::{AppState, Command, EntryId, Limits};
 use fp_remote::server::ServerStatus;
 
+use crate::crash;
 use crate::player_core::{PlayerCore, QueueEntry, SetBackendError};
 
 #[derive(uniffi::Record)]
@@ -173,12 +174,25 @@ impl FausteEngine {
     /// configuration at boot (`PlayerCore::with_overrides`); Phase 3's
     /// settings UI will own them afterwards.
     ///
+    /// First installs the crash panic hook (Phase 5, `crate::crash`):
+    /// BEFORE the core construction, exactly as the desktop installs it
+    /// before `run` (`fp-app/src/main.rs:93-103`), so a panic while the
+    /// store/engine/conductor wire up is reported too. The hook is
+    /// process-global and installed at most once — later constructions
+    /// (tests construct repeatedly) keep the first install. Reports go
+    /// to the store's log dir under `data_dir`, and the cap starts at
+    /// `Limits::default().max_crash_reports` (20, `fp-model/src/config.rs`).
+    ///
     /// Non-blocking-exempt: construction loads the store, spawns the
     /// conductor thread, the analysis pool and the remote server —
     /// callers must invoke it off the main thread, or the UI pays for a
     /// disk-bound boot (and Android flags it).
     #[uniffi::constructor]
     pub fn new(config: EngineConfig) -> Result<Arc<Self>, FausteError> {
+        crash::install_panic_hook_once(
+            crate::player_core::log_dir(Path::new(config.data_dir.as_str())),
+            Limits::default().max_crash_reports,
+        );
         let core = PlayerCore::with_overrides(
             PathBuf::from(config.data_dir),
             PathBuf::from(config.cache_dir),

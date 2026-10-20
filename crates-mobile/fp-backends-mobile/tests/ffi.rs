@@ -47,4 +47,20 @@ mod tests {
             "the null fallback must always be listed"
         );
     }
+
+    // Phase 5: the FFI constructor is the hook's install site (the
+    // mobile's `main.rs` equivalent — `ffi.rs`, `FausteEngine::new`).
+    // Whatever engine the parallel tests constructed FIRST installed
+    // the process's hook (the once-guard makes repeated constructions
+    // idempotent), so the honest pin here is reachability, not which
+    // call installed it; the hook's own behavior is pinned by
+    // `tests/crash_cap.rs`, a dedicated binary.
+    #[test]
+    fn construction_installs_the_crash_hook() {
+        let _engine = engine("crash-hook");
+        assert!(
+            fp_backends_mobile::crash::report_cap().is_some(),
+            "constructing the engine must have installed the panic hook"
+        );
+    }
 }
