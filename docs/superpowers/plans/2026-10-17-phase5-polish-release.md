@@ -89,6 +89,20 @@
 
 ---
 
+## Post-release backlog (from the Phase 5 final review triage)
+
+Priority order:
+1. **`pendingRestore` expiry** (the focus duck controller) — the field never expires, so a user slider move between two duck cycles is silently discarded by the next duck; expire once the polled engineState volume matches within tolerance (~2 poll periods). ~10 lines; the existing race test lane extends naturally.
+2. **CI ktlint gate on app sources** — the workflow installs ktlint only for the bindings drift check; add a `--check` step so the standing constraint stops being process-enforced.
+3. The redundant up-next `contentDescription` (TalkBack double announcement).
+4. Launcher-label localization (if ever wanted — brand surface).
+5. Test polish: the prune age-vs-name tooth-tightening; the Rust format test's backtrace slot.
+6. A logcat-visible channel for the panic hook's `tracing::error!` (device no-op today).
+
+Doc nits riding the next docs touch: soften the README's "survives a force-kill" to the honest bound ("up to the last save"); the Play Console FGS-declaration note in signing.md; signing.md's TEST-password literal → placeholder pattern.
+
+The recorded FEATURE deferrals (the README's roadmap): PlaylistsScreen (tabs/drag-reorder), CartwallScreen, WaveformView/MeterView/cues (need the waveform+analysis FFI surface), deep links, RemoteScreen (QR/pairing).
+
 ## Notes for the implementer
 
 - The Phase-4 plan's "Deferred to Phase 5" list is the authoritative handoff — its items map: audio focus → T2, lifecycle collection → T3, entry-id/next reads → T1, restart → T3, i18n → T5; the polish bucket lands opportunistically in whichever task touches its files (throttle extraction when a third VM appears — it won't this phase; fixture dedups when a third test consumer appears).
