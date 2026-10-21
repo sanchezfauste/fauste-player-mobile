@@ -16,7 +16,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.lang.reflect.Modifier
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * THE I18N SEAM'S CONTRACT (Task 5): the Fluent resolver over the REAL
@@ -33,6 +35,12 @@ import kotlin.test.assertEquals
  *   crash, never an invented string — FluentStrings' documented rule);
  * - the locale→bundle mapping (es/es-* reads the one es-ES bundle,
  *   everything else reads en-US);
+ * - the COMPLETENESS GUARD: every StringKeys constant resolves real copy
+ *   from the en-US source bundle AND from es-ES (translation or the
+ *   documented en-US fallback — never the raw key id), so a key added to
+ *   the object without a bundle entry fails HERE instead of shipping
+ *   "some-key-id" to users silently (the screen tests resolve through
+ *   the same resolver and would pass on both sides of that drift);
  * - the COMPOSITION half: a composable provided the es-ES resolver
  *   announces Spanish a11y strings (the TrackRow proof) — the seam the
  *   screens consume, exercised the way MainActivity provides it.
@@ -154,6 +162,31 @@ class FluentStringsTest {
     }
 
     // ------------------------------------------------------------------
+    // The completeness guard: EVERY StringKeys constant must resolve real
+    // copy from the bundles (the anti-drift net over the inventory)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun everyStringKeysConstantResolvesRealCopyFromBothBundles() {
+        // The key-miss ladder renders the raw id as its terminal fallback,
+        // which is exactly what a StringKeys constant with no bundle entry
+        // would ship to users — SILENTLY: screen tests assert through the
+        // same resolver, so both sides of the drift render the id and the
+        // suite stays green. This guard closes that path: the en-US source
+        // bundle (the inventory's source of truth) must carry EVERY key,
+        // and es-ES must answer with real copy too (its own translation
+        // or — the documented fallback — en-US's, never the raw id).
+        val drift =
+            stringKeyConstants().flatMap { (constant, id) ->
+                buildList {
+                    if (enUs[id] == id) add("en-US has no entry for $constant (\"$id\") — the ladder would render the raw id")
+                    if (esEs[id] == id) add("es-ES resolves $constant (\"$id\") to the raw id — no translation and no en-US fallback entry")
+                }
+            }
+        assertTrue("StringKeys ↔ bundle drift detected:\n  " + drift.joinToString("\n  ")) { drift.isEmpty() }
+    }
+
+    // ------------------------------------------------------------------
     // The locale→bundle mapping (documented, deliberately coarse)
     // ------------------------------------------------------------------
 
@@ -217,4 +250,17 @@ class FluentStringsTest {
 
     /** The real packaged bundle source — through the seam's OWN reader (the CMP path + the documented host fallback). */
     private fun bundleSource(bundleTag: String): String = runBlocking { FluentStrings.readBundleSource(bundleTag) }
+
+    /**
+     * Every [StringKeys] constant, as (constant name, key id) pairs — Java
+     * reflection over the object's static String fields (a `const val` in a
+     * Kotlin object compiles to exactly that), so a constant ADDED tomorrow
+     * is guarded with zero test edits and kotlin-reflect stays off the test
+     * classpath. Sorted for deterministic failure output.
+     */
+    private fun stringKeyConstants(): List<Pair<String, String>> =
+        StringKeys::class.java.declaredFields
+            .filter { it.type == String::class.java && Modifier.isStatic(it.modifiers) }
+            .map { it.name to it.get(null) as String }
+            .sortedBy { it.first }
 }
