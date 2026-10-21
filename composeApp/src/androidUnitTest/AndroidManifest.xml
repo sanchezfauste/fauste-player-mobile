@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The unit-test lane's manifest override (Task 5, i18n). AGP's
+     ProcessTestManifest merges the GENERATED test manifest with the
+     libraries' manifests — the APP manifest's tools:overrideLibrary is
+     not an input there, so the same override Fluently needs (its AARs
+     declare a template minSdk 28 while containing zero android.* API
+     references — see the app manifest's verification note) is declared
+     here too, keeping the test lane's minSdk 26 contract intact. -->
+<manifest xmlns:tools="http://schemas.android.com/tools">
+    <uses-sdk tools:overrideLibrary="dev.karmakrafts.fluently.fluently" />
+</manifest>

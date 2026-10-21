@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Fluently (Task 5, i18n) declares minSdk 28 in its AAR manifests —
+         template noise, not a real API floor: a bytecode scan of both
+         artifacts (fluently-core/fluently-frontend, 65 + parser classes)
+         shows ZERO android.* references (pure Kotlin/ANTLR, packaged as
+         AARs), so the app's pinned minSdk 26 floor (the project contract)
+         stays. overrideLibrary records exactly that verification; if a
+         future Fluently version gains a real Android dependency, this
+         line will lie — re-scan on any version bump. -->
+    <uses-sdk tools:overrideLibrary="dev.karmakrafts.fluently.fluently" />
 
     <!-- The audio-read permission pair the platform contract names
          (READ_MEDIA_AUDIO on API 33+, READ_EXTERNAL_STORAGE below):

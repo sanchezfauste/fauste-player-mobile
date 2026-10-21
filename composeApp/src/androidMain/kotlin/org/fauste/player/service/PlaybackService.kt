@@ -26,10 +26,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.fauste.player.MainActivity
 import org.fauste.player.player.PlaybackStatus
 import org.fauste.player.player.PlayerController
 import org.fauste.player.player.QueueManager
+import org.fauste.player.ui.strings.FluentStrings
+import org.fauste.player.ui.strings.StringKeys
+import org.fauste.player.ui.strings.Strings
+import org.fauste.player.ui.strings.currentLocaleTag
 import org.koin.core.context.GlobalContext
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -190,7 +195,7 @@ class PlaybackService : MediaSessionService() {
         super.onCreate()
 
         // The library's own notification provider, configured — channel
-        // id/name and the pinned notification id — not replaced: the
+        // id and the pinned notification id — not replaced: the
         // task's ruling is to use media3's rendering. Must be set before
         // the first session add so the manager never instantiates the
         // default. setSmallIcon pins the app's own glyph (the review's
@@ -201,11 +206,19 @@ class PlaybackService : MediaSessionService() {
         // the launcher's), so the notification gets a dedicated simple
         // playback glyph, used here AND by the stop-path's shutdown
         // notification below.
+        //
+        // NO channel NAME here (Task 5, i18n): the builder API takes an
+        // Android @StringRes, and the channel's user-visible name now
+        // lives in the Fluent bundles (notification-channel). The
+        // session-build coroutine below pre-creates the channel with
+        // the locale-resolved name BEFORE anything can post, so the
+        // provider's own lazy channel-creation branch — the only place
+        // it would read a name — never runs (its builder default is
+        // dead config, kept out of the app on purpose).
         setMediaNotificationProvider(
             DefaultMediaNotificationProvider
                 .Builder(this)
                 .setChannelId(NOTIFICATION_CHANNEL_ID)
-                .setChannelName(org.fauste.player.R.string.playback_notification_channel_name)
                 .setNotificationId(PLAYBACK_NOTIFICATION_ID)
                 .build()
                 .also { it.setSmallIcon(org.fauste.player.R.drawable.ic_playback_notification) },
@@ -218,6 +231,17 @@ class PlaybackService : MediaSessionService() {
                 val resolvedController = GlobalContext.get().get<PlayerController>()
                 val queue = GlobalContext.get().get<QueueManager>()
                 controller = resolvedController
+
+                // The i18n seam's service half (Task 5): the
+                // locale-aware resolver, resolved off-main like the
+                // controller — memoized per bundle, so in the normal
+                // app flow (the UI already provisioned it) this is a
+                // cache hit. The notification channel is pre-created
+                // with the Fluent name BEFORE any post can need it
+                // (see the provider note in onCreate), and the stop
+                // action's label rides the same resolver below.
+                val strings = FluentStrings.forLocale(currentLocaleTag())
+                ensureNotificationChannel(strings)
 
                 // On-main: SimpleBasePlayer's contract pins every Player
                 // access to the application looper, and MediaSession is
@@ -266,15 +290,17 @@ class PlaybackService : MediaSessionService() {
                         // player-command button (ICON_STOP +
                         // COMMAND_STOP) the provider renders from the
                         // preferences and the session routes back to
-                        // Player.stop() — the deck's transport stop.
+                        // Player.stop() — the deck's transport stop. The
+                        // label resolves through the i18n seam
+                        // (notification-stop), so a Spanish device says
+                        // "Detener" on the lock screen.
                         session.setMediaButtonPreferences(
                             listOf(
                                 CommandButton
                                     .Builder(CommandButton.ICON_STOP)
                                     .setPlayerCommand(Player.COMMAND_STOP)
-                                    .setDisplayName(
-                                        getString(org.fauste.player.R.string.playback_notification_stop),
-                                    ).build(),
+                                    .setDisplayName(strings[StringKeys.NOTIFICATION_STOP])
+                                    .build(),
                             ),
                         )
 
@@ -489,9 +515,32 @@ class PlaybackService : MediaSessionService() {
     }
 
     /**
+     * The i18n seam's channel half (Task 5): creates the playback channel
+     * with the LOCALE-RESOLVED name before any notification can need it,
+     * so the media3 provider's own check-then-create (whose name argument
+     * is an @StringRes the builder API cannot take from Fluent) never
+     * runs — see onCreate's provider note. Idempotent
+     * check-then-create, exactly the platform's own rule: an existing
+     * channel (the provider's, or the USER's edited one — Android
+     * remembers channel settings) is never clobbered.
+     */
+    private fun ensureNotificationChannel(strings: Strings) {
+        val manager = getSystemService(NotificationManager::class.java)
+        if (manager.getNotificationChannel(NOTIFICATION_CHANNEL_ID) == null) {
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    NOTIFICATION_CHANNEL_ID,
+                    strings[StringKeys.NOTIFICATION_CHANNEL],
+                    NotificationManager.IMPORTANCE_LOW,
+                ),
+            )
+        }
+    }
+
+    /**
      * The shutdown-notification half of the dance — the mirror of media3's
      * own private `createShutdownNotification` (1.11.1): ensure the
-     * playback channel exists (the same id/name the provider uses; the
+     * playback channel exists (the same id the provider uses; the
      * check-then-create is idempotent and never clobbers the provider's
      * or the user's channel settings), then the library's minimal builder
      * shape — the app's small icon, `setOnlyAlertOnce`, private
@@ -499,18 +548,16 @@ class PlaybackService : MediaSessionService() {
      * foreground-service behavior so the promotion is processed before
      * the stop instead of deferred past it. It is visible for
      * milliseconds at most: `stopForeground(REMOVE)` takes it down.
+     *
+     * The channel name resolves through the same i18n seam (the runBlocking
+     * is the rare cold corner — this stop path usually follows a session
+     * that already resolved the memoized resolver, so the call is a
+     * cache hit; a service that never built its session pays the one
+     * parse on a teardown path, never on a UI path).
      */
     private fun shutdownNotification(): android.app.Notification {
-        val manager = getSystemService(NotificationManager::class.java)
-        if (manager.getNotificationChannel(NOTIFICATION_CHANNEL_ID) == null) {
-            manager.createNotificationChannel(
-                NotificationChannel(
-                    NOTIFICATION_CHANNEL_ID,
-                    getString(org.fauste.player.R.string.playback_notification_channel_name),
-                    NotificationManager.IMPORTANCE_LOW,
-                ),
-            )
-        }
+        val strings = runBlocking { FluentStrings.forLocale(currentLocaleTag()) }
+        ensureNotificationChannel(strings)
         return NotificationCompat
             .Builder(this, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(org.fauste.player.R.drawable.ic_playback_notification)

@@ -2,6 +2,7 @@ package org.fauste.player.viewmodel
 
 import org.fauste.player.rust.BackendInfo
 import org.fauste.player.rust.RemoteInfo
+import org.fauste.player.ui.strings.UiText
 
 /**
  * The Settings screen's UDF state, the third screen's mirror of
@@ -30,8 +31,8 @@ import org.fauste.player.rust.RemoteInfo
  *   snapshot property stays for non-flow consumers.
  * - [remote] is [RemoteServer]'s record; a blank address while enabled
  *   is the FFI's retrying-bind shape (an error field is the Phase-5
- *   FFI candidate) — the screen renders the em dash for it, never a
- *   made-up address.
+ *   FFI candidate) — the screen renders the i18n seam's unknown marker
+ *   for it, never a made-up address.
  *
  * [pendingVolume] is non-null while a volume drag (or its
  * committed-but-unconfirmed tail) is in flight — the screen draws
@@ -50,8 +51,8 @@ data class SettingsUiState(
     val volume: Float = 1.0f,
     /** The in-flight volume drag target, if any; drives [sliderVolume] and the pending feedback. */
     val pendingVolume: Float? = null,
-    /** The latest command outcome — a Busy drop or a Failed message; cleared by the next intent, whatever its outcome. */
-    val error: String? = null,
+    /** The latest command outcome — a Busy drop or a Failed cause as a locale-independent [UiText]; cleared by the next intent, whatever its outcome. */
+    val error: UiText? = null,
 ) {
     /** The volume the slider shows: the pending drag target if any, else the engine's. */
     val sliderVolume: Float

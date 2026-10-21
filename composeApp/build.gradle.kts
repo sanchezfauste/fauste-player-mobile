@@ -43,6 +43,13 @@ kotlin {
                 implementation(libs.koin.compose)
                 implementation(libs.koin.compose.viewmodel)
                 implementation(libs.koin.core.viewmodel)
+                // Fluently (Task 5, i18n): the .ftl parser/formatter the
+                // Strings seam builds on — see the catalog's provenance
+                // note for why it is this artifact and not the plan's
+                // literal "fluent-kotlin" name. commonMain: the whole seam
+                // (parse + format) is multiplatform code, resources are
+                // read through Compose's own resource runtime below.
+                implementation(libs.fluently.core)
             }
         }
         androidMain {
@@ -156,6 +163,24 @@ android {
             // Robolectric reads the merged manifest + packaged resources
             // (fonts included) so the unit-test classpath matches the app.
             isIncludeAndroidResources = true
+        }
+    }
+
+    // THE I18N TEST LANE'S CLASSPATH WIRING (Task 5): the Fluent bundles
+    // under composeResources/files/locales are ALSO published onto the
+    // unit-test classpath — no copies, the very same files — so
+    // FluentStrings' documented host fallback (Robolectric installs
+    // manifest ContentProviders lazily, so CMP's resource runtime — whose
+    // AndroidContextProvider the device installs eagerly — is not
+    // initialized on the test lane; see FluentStrings.readBundleSource)
+    // reads the identical bytes the APK ships. Declared on the ANDROID
+    // unit-test source set because AGP's unit-test resource pipeline
+    // (java_res/unit_test_config) consumes the android source set, and
+    // a KGP source-set srcDir added in the kotlin{} block does not
+    // propagate there (verified against the sandbox classloader roots).
+    sourceSets {
+        getByName("test") {
+            resources.srcDir("src/commonMain/composeResources/files/locales")
         }
     }
 }

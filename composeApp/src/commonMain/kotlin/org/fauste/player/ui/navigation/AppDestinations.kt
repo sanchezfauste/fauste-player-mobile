@@ -5,13 +5,16 @@ import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
+import org.fauste.player.ui.strings.StringKeys
 
 /**
  * The app's destinations, sealed: Player, Library, Settings — the plan's
  * three flat routes. The type carries everything the bottom bar draws:
  * a stable [route] (the string the navigation state saves/restores and the
- * tests address), a human [label] (shown AND announced — the item's
- * contentDescription), and a decorative [icon].
+ * tests address), a [labelKey] (the Fluent message id whose RESOLVED
+ * string is shown AND announced — the i18n seam renders it; the Task-5
+ * migration turned the label into a key so the bottom bar speaks the
+ * user's language), and a decorative [icon].
  *
  * Usage reads as `AppDestinations.Player`; the plural type name matches
  * this file's mandated name (the plan's own file list names it
@@ -21,27 +24,27 @@ sealed interface AppDestinations {
     /** The saved navigation state keys on this stable string. */
     val route: String
 
-    /** The label shown in the bottom bar and announced by TalkBack. */
-    val label: String
+    /** The Fluent key of the label shown in the bottom bar and announced by TalkBack. */
+    val labelKey: String
 
     /** The bottom-bar icon; decorative — the label carries the semantics. */
     val icon: ImageVector
 
     data object Player : AppDestinations {
         override val route = "player"
-        override val label = "Player"
+        override val labelKey = StringKeys.NAV_PLAYER
         override val icon = Icons.Filled.PlayArrow
     }
 
     data object Library : AppDestinations {
         override val route = "library"
-        override val label = "Library"
+        override val labelKey = StringKeys.NAV_LIBRARY
         override val icon = Icons.Filled.LibraryMusic
     }
 
     data object Settings : AppDestinations {
         override val route = "settings"
-        override val label = "Settings"
+        override val labelKey = StringKeys.NAV_SETTINGS
         override val icon = Icons.Filled.Settings
     }
 

@@ -2,6 +2,8 @@ package org.fauste.player.viewmodel
 
 import org.fauste.player.player.PlaybackState
 import org.fauste.player.player.PlaybackStatus
+import org.fauste.player.ui.strings.StringKeys
+import org.fauste.player.ui.strings.UiText
 
 /**
  * The Player screen's UDF state — spec §5's `PlayerUiState` trimmed to what
@@ -24,16 +26,18 @@ import org.fauste.player.player.PlaybackStatus
  * exists (the model's `next` gated on `next_explicit`; the surface carries
  * no derived-next read, so the line renders nothing when nobody armed —
  * inventing a "next" there would be exactly the play-now promise the
- * arm-only contract forbids). The em dash is the honest unknown marker for
- * an arm whose row is not in the queue flow (the remote-mutation staleness
- * corner), never a fake title.
+ * arm-only contract forbids). It travels as a [UiText] — the placed
+ * title raw, the bundle's unknown-marker key while the arm cannot be
+ * placed in the queue flow (the remote-mutation staleness corner), so
+ * the state stays locale-independent and the marker says what it means
+ * in the user's language, never a fake title.
  */
 data class PlayerUiState(
     val playback: PlaybackState,
     val pendingSeekPosition: Double? = null,
     val pendingVolume: Float? = null,
-    val upNextTitle: String? = null,
-    val error: String? = null,
+    val upNextTitle: UiText? = null,
+    val error: UiText? = null,
 ) {
     /** True while the transport reports playing — drives the play/pause icon. */
     val isPlaying: Boolean
@@ -48,13 +52,15 @@ data class PlayerUiState(
         get() = pendingVolume ?: playback.volume
 
     /**
-     * The current track's title — the FFI carries the model's stem-derived
-     * title — or an em dash while no track is on air / the title is blank
-     * (the honest-limits rule: a placeholder marker, never a fake title;
-     * TrackRow's unknown duration follows the same convention).
+     * The current track's RAW title — the FFI carries the model's
+     * stem-derived title — or the empty string while no track is on air
+     * or the title is blank (the honest-limits rule: the state carries
+     * the data and never a placeholder; PlayerScreen renders the i18n
+     * seam's unknown-marker key for the blank case, the same convention
+     * TrackRow's unknown duration follows).
      */
     val trackTitle: String
-        get() = playback.currentTrack?.title?.takeIf { it.isNotBlank() } ?: "—"
+        get() = playback.currentTrack?.title.orEmpty()
 
     /** The current track's artist when the FFI carries one; null otherwise (no fake placeholder). */
     val trackArtist: String?

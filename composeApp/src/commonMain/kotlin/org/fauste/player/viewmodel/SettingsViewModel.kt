@@ -18,6 +18,8 @@ import org.fauste.player.player.CommandResult
 import org.fauste.player.player.PlayerController
 import org.fauste.player.repository.SettingsRepository
 import org.fauste.player.rust.BackendInfo
+import org.fauste.player.ui.strings.StringKeys
+import org.fauste.player.ui.strings.UiText
 import kotlin.math.abs
 
 /**
@@ -82,7 +84,7 @@ class SettingsViewModel(
     // plain private flows the uiState pipeline combines — hence no underscore.
     private val backends = MutableStateFlow<List<BackendInfo>>(emptyList())
     private val pendingVolume = MutableStateFlow<Float?>(null)
-    private val lastError = MutableStateFlow<String?>(null)
+    private val lastError = MutableStateFlow<UiText?>(null)
 
     private var volumeCommitJob: Job? = null
 
@@ -208,12 +210,12 @@ class SettingsViewModel(
         pendingVolume.value = null
     }
 
-    /** Maps a command outcome onto the error channel: null on success, a human-readable message on failure. */
-    private fun message(result: CommandResult): String? =
+    /** Maps a command outcome onto the error channel: null on success, a message id or raw cause on failure. */
+    private fun message(result: CommandResult): UiText? =
         when (result) {
             CommandResult.Accepted -> null
             CommandResult.Busy -> BUSY_MESSAGE
-            is CommandResult.Failed -> result.message
+            is CommandResult.Failed -> UiText.Raw(result.message)
         }
 
     companion object {
@@ -232,7 +234,7 @@ class SettingsViewModel(
         /** Volume echo-release tolerance: one f32 round-trip's worth of slack. */
         const val VOLUME_SETTLE_TOLERANCE: Float = 0.005f
 
-        /** The Busy channel's user-facing message — a dropped command is safe to retry (the FFI's contract). */
-        const val BUSY_MESSAGE: String = "The player was busy and dropped the command — try again."
+        /** The Busy channel's user-facing message id — a dropped command is safe to retry (the FFI's contract). */
+        val BUSY_MESSAGE: UiText = UiText.Key(StringKeys.PLAYER_BUSY)
     }
 }

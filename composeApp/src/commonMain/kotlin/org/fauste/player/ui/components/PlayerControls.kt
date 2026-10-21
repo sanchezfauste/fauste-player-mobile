@@ -27,6 +27,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import org.fauste.player.ui.format.formatClock
+import org.fauste.player.ui.strings.LocalStrings
+import org.fauste.player.ui.strings.StringKeys
 import org.fauste.player.ui.theme.Timecode
 
 /**
@@ -65,9 +67,18 @@ fun PlayerControls(
     onVolumeChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val strings = LocalStrings.current
     Column(modifier = modifier.padding(horizontal = 16.dp)) {
         Text(
-            text = "${formatClock(positionSeconds)} / ${formatClock(durationSeconds)}",
+            // The timecode arrives pre-formatted by formatClock — the mono
+            // readout is media, not prose, and no locale may reorder it;
+            // the seam owns only the " / " separator.
+            text =
+                strings[
+                    StringKeys.TIMECODE,
+                    "position" to formatClock(positionSeconds),
+                    "duration" to formatClock(durationSeconds),
+                ],
             style = MaterialTheme.typography.Timecode,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.align(Alignment.CenterHorizontally),
@@ -79,7 +90,7 @@ fun PlayerControls(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .semantics { contentDescription = "Seek bar" },
+                    .semantics { contentDescription = strings[StringKeys.CONTROL_SEEK] },
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onPrevious) {
@@ -88,19 +99,21 @@ fun PlayerControls(
                     // Transport icons stay LTR-only: media controls describe
                     // the deck, not reading direction, so they are not
                     // AutoMirrored.
-                    contentDescription = "Previous track",
+                    contentDescription = strings[StringKeys.CONTROL_PREVIOUS],
                 )
             }
             IconButton(
                 onClick = onPlayPause,
                 modifier =
                     Modifier.semantics {
-                        stateDescription = if (isPlaying) "Playing" else "Paused"
+                        stateDescription =
+                            strings[if (isPlaying) StringKeys.CONTROL_PLAYING else StringKeys.CONTROL_PAUSED]
                     },
             ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    contentDescription =
+                        strings[if (isPlaying) StringKeys.CONTROL_PAUSE else StringKeys.CONTROL_PLAY],
                 )
             }
         }
@@ -118,7 +131,7 @@ fun PlayerControls(
                     Modifier
                         .fillMaxWidth()
                         .padding(start = 8.dp)
-                        .semantics { contentDescription = "Volume" },
+                        .semantics { contentDescription = strings[StringKeys.CONTROL_VOLUME] },
             )
         }
     }

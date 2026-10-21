@@ -29,6 +29,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.fauste.player.ui.collectUiStateWithLifecycle
 import org.fauste.player.ui.components.TrackRow
+import org.fauste.player.ui.strings.LocalStrings
+import org.fauste.player.ui.strings.StringKeys
+import org.fauste.player.ui.strings.render
 import org.fauste.player.viewmodel.LibraryImport
 import org.fauste.player.viewmodel.LibraryViewModel
 import org.koin.compose.viewmodel.koinViewModel
@@ -61,7 +64,8 @@ import org.koin.compose.viewmodel.koinViewModel
  * (TrackRow): the arm the tap made, visible without any play-now
  * promise.
  *
- * Honest limits: a 0.0 duration renders an em dash (TrackRow's rule);
+ * Honest limits: a 0.0 duration renders the seam's unknown marker
+ * (TrackRow's rule);
  * an empty queue shows the import call-to-action rather than an empty
  * list; a search that matches nothing says so; import results stay
  * until dismissed (a snackbar's timed dismissal hides state a user may
@@ -72,6 +76,7 @@ fun LibraryScreen(
     onImportClick: () -> Unit,
     viewModel: LibraryViewModel = koinViewModel(),
 ) {
+    val strings = LocalStrings.current
     val state by viewModel.uiState.collectUiStateWithLifecycle()
     Column(
         modifier =
@@ -84,45 +89,49 @@ fun LibraryScreen(
             value = state.query,
             onValueChange = viewModel::onQueryChange,
             singleLine = true,
-            label = { Text("Search") },
+            label = { Text(strings[StringKeys.LIBRARY_SEARCH_LABEL]) },
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .semantics { contentDescription = "Search the queue" },
+                    .semantics { contentDescription = strings[StringKeys.LIBRARY_SEARCH_DESCRIPTION] },
         )
         Button(
             onClick = onImportClick,
             enabled = state.import != LibraryImport.Importing,
         ) {
-            Text("Import")
+            Text(strings[StringKeys.LIBRARY_IMPORT])
         }
         when (val result = state.import) {
             LibraryImport.Idle -> Unit
-            LibraryImport.Importing -> Text("Importing…", style = MaterialTheme.typography.bodySmall)
+            LibraryImport.Importing ->
+                Text(
+                    strings[StringKeys.LIBRARY_IMPORTING],
+                    style = MaterialTheme.typography.bodySmall,
+                )
             is LibraryImport.Imported ->
                 ImportResultLine(
-                    text = "Imported: ${result.path}",
+                    text = strings[StringKeys.LIBRARY_IMPORTED, "path" to result.path],
                     onDismiss = viewModel::onDismissImportResult,
                 )
             is LibraryImport.Failed ->
                 ImportResultLine(
-                    text = result.message,
+                    text = result.text.render(strings),
                     onDismiss = viewModel::onDismissImportResult,
                     isError = true,
                 )
         }
         state.error?.let { message ->
             Text(
-                text = message,
+                text = message.render(strings),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
         }
         when {
             state.queueEntryCount == 0 ->
-                EmptyState("Import music to build the queue", Modifier.weight(1f))
+                EmptyState(strings[StringKeys.LIBRARY_EMPTY_QUEUE], Modifier.weight(1f))
             state.rows.isEmpty() ->
-                EmptyState("No tracks match the search.", Modifier.weight(1f))
+                EmptyState(strings[StringKeys.LIBRARY_EMPTY_SEARCH], Modifier.weight(1f))
             else ->
                 LazyColumn(
                     modifier =
@@ -157,6 +166,7 @@ private fun ImportResultLine(
     onDismiss: () -> Unit,
     isError: Boolean = false,
 ) {
+    val strings = LocalStrings.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -169,7 +179,7 @@ private fun ImportResultLine(
             modifier = Modifier.weight(1f),
         )
         TextButton(onClick = onDismiss) {
-            Text("Dismiss")
+            Text(strings[StringKeys.LIBRARY_DISMISS])
         }
     }
 }

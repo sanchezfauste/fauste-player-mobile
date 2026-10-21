@@ -14,6 +14,8 @@ import org.fauste.player.repository.MediaRepository
 import org.fauste.player.repository.PlaylistRepository
 import org.fauste.player.rust.EngineState
 import org.fauste.player.rust.PlaylistEntry
+import org.fauste.player.ui.strings.StringKeys
+import org.fauste.player.ui.strings.UiText
 
 /**
  * The Library screen's UDF half, mirroring [PlayerViewModel]: state down
@@ -67,7 +69,7 @@ class LibraryViewModel(
     // plain private flows the uiState pipeline combines — hence no underscore.
     private val query = MutableStateFlow("")
     private val importState = MutableStateFlow<LibraryImport>(LibraryImport.Idle)
-    private val lastError = MutableStateFlow<String?>(null)
+    private val lastError = MutableStateFlow<UiText?>(null)
 
     init {
         // The composition pipeline, on the command dispatcher (also where
@@ -135,9 +137,13 @@ class LibraryViewModel(
                 .import(uri)
                 .onSuccess { path -> importState.value = LibraryImport.Imported(path) }
                 .onFailure { cause ->
+                    // The dynamic cause travels raw (it carries the path
+                    // and the engine's own words); the never-fallback for
+                    // a causeless failure is the bundle's key.
                     importState.value =
                         LibraryImport.Failed(
-                            cause.message?.takeIf { it.isNotBlank() } ?: IMPORT_FAILED_MESSAGE,
+                            cause.message?.takeIf { it.isNotBlank() }?.let { message -> UiText.Raw(message) }
+                                ?: IMPORT_FAILED_MESSAGE,
                         )
                 }
         }
@@ -160,28 +166,27 @@ class LibraryViewModel(
         importState.value = LibraryImport.Idle
     }
 
-    /** Maps a queue-command outcome onto the error channel: null on success, a message on failure. */
-    private fun message(result: CommandResult): String? =
+    /** Maps a queue-command outcome onto the error channel: null on success, a message id or raw cause on failure. */
+    private fun message(result: CommandResult): UiText? =
         when (result) {
             CommandResult.Accepted -> null
             CommandResult.Busy -> BUSY_MESSAGE
-            is CommandResult.Failed -> result.message
+            is CommandResult.Failed -> UiText.Raw(result.message)
         }
 
     companion object {
-        /** The Busy channel's user-facing message — a dropped command is safe to retry (the FFI's contract). */
-        const val BUSY_MESSAGE: String = "The player was busy and dropped the command — try again."
+        /** The Busy channel's user-facing message id — a dropped command is safe to retry (the FFI's contract). */
+        val BUSY_MESSAGE: UiText = UiText.Key(StringKeys.PLAYER_BUSY)
 
-        /** The audio-read permission refusal — the honest dead-end message, phrased as the next step. */
-        const val PERMISSION_DENIED_MESSAGE: String =
-            "Import needs access to your audio files — grant the permission and tap Import again."
+        /** The audio-read permission refusal — the honest dead-end message id, phrased as the next step. */
+        val PERMISSION_DENIED_MESSAGE: UiText = UiText.Key(StringKeys.LIBRARY_PERMISSION_DENIED)
 
         /**
          * The never-fallback for a failure that carries no message
          * ([MediaRepository] failures are message-bearing exceptions, so
          * this is belt-and-braces, never the interesting path).
          */
-        const val IMPORT_FAILED_MESSAGE: String = "the import failed"
+        val IMPORT_FAILED_MESSAGE: UiText = UiText.Key(StringKeys.LIBRARY_IMPORT_FAILED)
 
         /**
          * The pipeline's pure row mapping + filter: playlist rows in queue
@@ -189,9 +194,11 @@ class LibraryViewModel(
          * (the id-join — duplicate paths no longer each read as current;
          * the documented path fallback covers only the id-absent shape),
          * [LibraryRow.isArmed] by the engine's armed id (the arm-only
-         * badge), blank titles as the em dash marker
-         * (PlayerUiState.trackTitle's convention), and the trimmed,
-         * case-insensitive title match on a non-blank [query].
+         * badge), blank titles carried RAW (the state layer never
+         * invents a marker — TrackRow renders the i18n seam's
+         * unknown-marker key for a blank, the same rule as an unfilled
+         * duration), and the trimmed, case-insensitive title match on a
+         * non-blank [query].
          */
         internal fun visibleRows(
             entries: List<PlaylistEntry>,
@@ -202,7 +209,7 @@ class LibraryViewModel(
                 entries.map { entry ->
                     LibraryRow(
                         id = entry.id,
-                        title = entry.title.takeIf { it.isNotBlank() } ?: "—",
+                        title = entry.title,
                         durationSeconds = entry.duration,
                         isPlaying =
                             when (val onAir = engine.currentEntryId) {

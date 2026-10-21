@@ -1,13 +1,17 @@
 package org.fauste.player.viewmodel
 
+import org.fauste.player.ui.strings.UiText
+
 /**
  * One queue row as the Library screen renders it, mapped from the FFI's
  * [org.fauste.player.rust.PlaylistEntry]: the [id] the remove/move and
  * jump commands address (and the LazyColumn key — the Phase-3 rule: row
  * identity comes from the playlist flow, never from an enqueue call's
  * returned id), the row's [title] and [durationSeconds] (0.0 reads as
- * "unknown" and TrackRow renders an em dash — the honest-limits rule),
- * the [isPlaying] flag and the [isArmed] flag.
+ * "unknown" and TrackRow renders the unknown marker — the honest-limits
+ * rule; a BLANK title likewise stays raw here and the row renders the
+ * marker for it at draw time), the [isPlaying] flag and the [isArmed]
+ * flag.
  *
  * [isPlaying] follows the ENGINE's on-air entry, not the transport
  * status: the flag marks the row the player holds on air (the desktop's
@@ -57,9 +61,9 @@ sealed interface LibraryImport {
         val path: String,
     ) : LibraryImport
 
-    /** The import did not happen; [message] says why, user-readably. */
+    /** The import did not happen; [text] says why — a locale-independent [UiText] the render layer resolves. */
     data class Failed(
-        val message: String,
+        val text: UiText,
     ) : LibraryImport
 }
 
@@ -70,13 +74,14 @@ sealed interface LibraryImport {
  * screen can tell an empty queue from an empty search result), the raw
  * [query] (the TextField's value, spaces and all — matching trims), the
  * [import] phase, and [error] — the latest queue-command outcome (a Busy
- * drop or a Failed message), cleared by the next intent, whatever its
- * outcome.
+ * drop or a Failed cause, as a locale-independent [UiText] the
+ * composition resolves through the i18n seam — state never carries
+ * rendered copy), cleared by the next intent, whatever its outcome.
  */
 data class LibraryUiState(
     val rows: List<LibraryRow> = emptyList(),
     val queueEntryCount: Int = 0,
     val query: String = "",
     val import: LibraryImport = LibraryImport.Idle,
-    val error: String? = null,
+    val error: UiText? = null,
 )

@@ -14,6 +14,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -31,6 +32,8 @@ import org.fauste.player.rust.EngineState
 import org.fauste.player.rust.FausteException
 import org.fauste.player.rust.PlaylistEntry
 import org.fauste.player.ui.ScreenTestLifecycleOwner
+import org.fauste.player.ui.strings.FluentStrings
+import org.fauste.player.ui.strings.StringKeys
 import org.fauste.player.ui.theme.FausteTheme
 import org.fauste.player.viewmodel.LibraryImport
 import org.fauste.player.viewmodel.LibraryViewModel
@@ -85,6 +88,12 @@ class LibraryScreenTest {
 
     /** The copy seam's parked answer, cancelled in tearDown so a mid-import test cannot leak its coroutine. */
     private var storageGate: CompletableDeferred<String?>? = null
+
+    // The composition renders through LocalStrings' en-US default (the
+    // i18n seam's documented test shape); message assertions resolve the
+    // SAME memoized en-US resolver so a copy edit is one edit, here and
+    // in the bundle — never a forked literal.
+    private val enUs: FluentStrings by lazy { runBlocking { FluentStrings.forLocale("en-US") } }
 
     @Before
     fun setUp() {
@@ -265,9 +274,10 @@ class LibraryScreenTest {
         viewModel.onImportPermissionDenied()
         render()
 
+        val deniedText = enUs[StringKeys.LIBRARY_PERMISSION_DENIED]
         composeRule.waitUntil(TIMEOUT_MILLIS) {
             composeRule
-                .onAllNodesWithText(LibraryViewModel.PERMISSION_DENIED_MESSAGE)
+                .onAllNodesWithText(deniedText)
                 .fetchSemanticsNodes()
                 .isNotEmpty()
         }
@@ -276,7 +286,7 @@ class LibraryScreenTest {
 
         composeRule.waitUntil(TIMEOUT_MILLIS) {
             composeRule
-                .onAllNodesWithText(LibraryViewModel.PERMISSION_DENIED_MESSAGE)
+                .onAllNodesWithText(deniedText)
                 .fetchSemanticsNodes()
                 .isEmpty()
         }

@@ -23,6 +23,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.fauste.player.ui.format.formatClock
+import org.fauste.player.ui.strings.LocalStrings
+import org.fauste.player.ui.strings.StringKeys
 import org.fauste.player.ui.theme.NocturneColors
 import org.fauste.player.ui.theme.Timecode
 
@@ -36,8 +38,9 @@ import org.fauste.player.ui.theme.Timecode
  * layer to these parameters.
  *
  * Honest limits: a duration of 0.0 means "unknown, not filled by the
- * services layer yet" and renders an em dash — never a fake "00:00".
- * The armed badge is ARM-ONLY, never a play-now promise: it marks the
+ * services layer yet" and renders the unknown marker (the i18n seam's
+ * `unknown-value` — an em dash today) — never a fake "00:00". The armed
+ * badge is ARM-ONLY, never a play-now promise: it marks the
  * row the user chose as the player's next, exactly what the tap did;
  * the desktop's own table marks its next row with a distinct visual
  * class the same way (`RowStatus::Next`, `fp-app/src/ui/view.rs:389`).
@@ -66,11 +69,12 @@ fun TrackRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val strings = LocalStrings.current
     Row(
         modifier =
             modifier
                 .fillMaxWidth()
-                .clickable(onClickLabel = "Arm as next track", onClick = onClick)
+                .clickable(onClickLabel = strings[StringKeys.ROW_ARM], onClick = onClick)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -85,7 +89,7 @@ fun TrackRow(
                         if (isPlaying) {
                             Modifier
                                 .background(NocturneColors.Playing, CircleShape)
-                                .semantics { contentDescription = "Now playing" }
+                                .semantics { contentDescription = strings[StringKeys.ROW_NOW_PLAYING] }
                         } else {
                             Modifier
                         },
@@ -104,17 +108,19 @@ fun TrackRow(
         // row node, announced with title and duration.
         if (isArmed) {
             Text(
-                text = "UP NEXT",
+                text = strings[StringKeys.ROW_UP_NEXT],
                 style = MaterialTheme.typography.labelSmall,
                 color = NocturneColors.Warning,
                 modifier =
                     Modifier
                         .padding(start = 12.dp)
-                        .semantics { contentDescription = "Armed as next track" },
+                        .semantics { contentDescription = strings[StringKeys.ROW_ARMED] },
             )
         }
         Text(
-            text = if (durationSeconds > 0.0) formatClock(durationSeconds) else "—",
+            // The honest unknown marker for an unfilled duration (0.0) —
+            // a blank never renders as a fake timecode.
+            text = if (durationSeconds > 0.0) formatClock(durationSeconds) else strings[StringKeys.UNKNOWN_VALUE],
             style = MaterialTheme.typography.Timecode,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 12.dp),

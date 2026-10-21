@@ -20,6 +20,8 @@ import org.fauste.player.repository.PlaylistRepository
 import org.fauste.player.rust.EngineState
 import org.fauste.player.rust.FausteException
 import org.fauste.player.rust.PlaylistEntry
+import org.fauste.player.ui.strings.StringKeys
+import org.fauste.player.ui.strings.UiText
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -258,12 +260,16 @@ class LibraryViewModelTest {
     }
 
     @Test
-    fun aBlankRowTitleBecomesTheEmDashMarker() {
+    fun aBlankRowTitleStaysBlankForTheRenderLayerToMark() {
         makeViewModel(playlist = listOf(playlistEntry(id = 3u, title = "")))
         scheduler.runCurrent()
 
+        // The state layer carries the RAW title (never an invented
+        // marker); TrackRow renders the i18n seam's unknown-marker key
+        // for a blank — the Task-5 migration moved the em dash from
+        // here to the draw, so a locale can mark it its own way.
         val rows = viewModel.uiState.value.rows
-        assertEquals("—", rows.single().title)
+        assertEquals("", rows.single().title)
     }
 
     // ------------------------------------------------------------------
@@ -366,7 +372,7 @@ class LibraryViewModelTest {
         // own (pinned by the shared suite); here it is consumed: no
         // enqueue call, no row, and the honest cause on the state.
         assertEquals(
-            LibraryImport.Failed("nothing was copied from content://picked/2 — the queue was left untouched"),
+            LibraryImport.Failed(UiText.Raw("nothing was copied from content://picked/2 — the queue was left untouched")),
             viewModel.uiState.value.import,
         )
         assertTrue(engine.enqueueCalls.isEmpty(), "a failed copy never reaches the engine")
@@ -428,7 +434,10 @@ class LibraryViewModelTest {
         viewModel.onRowTap(4u)
         scheduler.runCurrent()
 
-        assertEquals(LibraryViewModel.BUSY_MESSAGE, viewModel.uiState.value.error)
+        // KEY-BASED (Task 5): the state carries the bundle's message id,
+        // never rendered copy — the suite asserts the id, and the
+        // resolver suites prove what it renders.
+        assertEquals(UiText.Key(StringKeys.PLAYER_BUSY), viewModel.uiState.value.error)
 
         // No crash: the next intent runs and clears the error.
         viewModel.onQueryChange("oct")

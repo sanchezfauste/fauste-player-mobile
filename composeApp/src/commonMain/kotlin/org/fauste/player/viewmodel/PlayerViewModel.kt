@@ -20,6 +20,8 @@ import org.fauste.player.player.PlayerController
 import org.fauste.player.player.QueueManager
 import org.fauste.player.repository.PlaylistRepository
 import org.fauste.player.rust.PlaylistEntry
+import org.fauste.player.ui.strings.StringKeys
+import org.fauste.player.ui.strings.UiText
 import kotlin.math.abs
 
 /**
@@ -82,7 +84,7 @@ class PlayerViewModel(
     // plain private flows the uiState pipeline combines — hence no underscore.
     private val pendingSeekPosition = MutableStateFlow<Double?>(null)
     private val pendingVolume = MutableStateFlow<Float?>(null)
-    private val lastError = MutableStateFlow<String?>(null)
+    private val lastError = MutableStateFlow<UiText?>(null)
 
     private var seekCommitJob: Job? = null
     private var volumeCommitJob: Job? = null
@@ -227,12 +229,12 @@ class PlayerViewModel(
         pendingVolume.value = null
     }
 
-    /** Maps a command outcome onto the error channel: null on success, a human-readable message on failure. */
-    private fun message(result: CommandResult): String? =
+    /** Maps a command outcome onto the error channel: null on success, a message id or raw cause on failure. */
+    private fun message(result: CommandResult): UiText? =
         when (result) {
             CommandResult.Accepted -> null
             CommandResult.Busy -> BUSY_MESSAGE
-            is CommandResult.Failed -> result.message
+            is CommandResult.Failed -> UiText.Raw(result.message)
         }
 
     companion object {
@@ -241,26 +243,29 @@ class PlayerViewModel(
 
         /**
          * The up-next line's title (the class KDoc's contract): the ARMED
-         * row's title by id; the em dash while the armed row is not in the
-         * queue flow (the remote-mutation staleness corner — the honest
-         * unknown, never a fake title); null while nothing is armed (the
-         * line hides — the surface carries no derived-next read, so a
-         * rendered line would be a play-now promise).
+         * row's title by id as raw text; the bundle's unknown-marker KEY
+         * while the armed row is not in the queue flow (the
+         * remote-mutation staleness corner — the honest unknown, never a
+         * fake title, resolved to the user's language at render time);
+         * null while nothing is armed (the line hides — the surface
+         * carries no derived-next read, so a rendered line would be a
+         * play-now promise).
          */
         internal fun upNextTitle(
             armedEntryId: ULong?,
             playlist: List<PlaylistEntry>,
-        ): String? =
+        ): UiText? =
             armedEntryId?.let { id ->
                 playlist
                     .firstOrNull { entry -> entry.id == id }
                     ?.title
                     ?.takeIf { it.isNotBlank() }
+                    ?.let { title -> UiText.Raw(title) }
                     ?: UNKNOWN_UP_NEXT_TITLE
             }
 
-        /** The honest unknown marker for an armed row the queue flow cannot place (the em-dash convention). */
-        const val UNKNOWN_UP_NEXT_TITLE: String = "—"
+        /** The honest unknown marker id for an armed row the queue flow cannot place (the state-layer id). */
+        val UNKNOWN_UP_NEXT_TITLE: UiText = UiText.Key(StringKeys.UNKNOWN_VALUE)
 
         /** How long an accepted seek may take to show in the polled state (mirrors the state layer's bounded confirm window). */
         const val SEEK_SETTLE_TIMEOUT_MILLIS: Long = 2_000
@@ -274,7 +279,7 @@ class PlayerViewModel(
         /** Volume echo-release tolerance: one f32 round-trip's worth of slack. */
         const val VOLUME_SETTLE_TOLERANCE: Float = 0.005f
 
-        /** The Busy channel's user-facing message — a dropped command is safe to retry (the FFI's contract). */
-        const val BUSY_MESSAGE: String = "The player was busy and dropped the command — try again."
+        /** The Busy channel's user-facing message id — a dropped command is safe to retry (the FFI's contract). */
+        val BUSY_MESSAGE: UiText = UiText.Key(StringKeys.PLAYER_BUSY)
     }
 }

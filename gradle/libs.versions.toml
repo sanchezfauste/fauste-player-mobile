@@ -51,6 +51,22 @@ media3 = "1.11.1"
 # lifecycle-runtime 2.9.4, verified in the debugRuntimeClasspath
 # resolution) — so this adds no second lifecycle version to any classpath.
 lifecycle = "2.9.4"
+# Fluently (Task 5, i18n): the Kotlin Multiplatform implementation of
+# Project Fluent (.ftl) the spec's "fluent-kotlin" hint resolves to. The
+# named hint (formation-res/fluent-kotlin, com.tryformation:fluent-kotlin)
+# is NOT on Maven Central (published only on maven.tryformation.com) and
+# ships js/jvm targets only (its own README), delegating JVM parsing to a
+# "not fully complete" xyzsd/fluent — so it cannot serve an Android KMP
+# target from the project's google()/mavenCentral() repositories.
+# dev.karmakrafts.fluently:fluently-core IS on Maven Central (verified:
+# repo1 maven-metadata.xml, release 1.3.2, lastUpdated 20251005), is
+# published from a real KotlinAndroidTarget (the .module lists
+# debug/release android variants alongside jvm/ios/js/wasm; built with
+# Kotlin 2.2.20 against this project's 2.2.21), is pure-Kotlin/ANTLR
+# (no Compose, no engine), and is Apache-2.0. Runtime deps:
+# antlr-kotlin-runtime 1.0.8 + kotlinx-serialization/io (JSON bundles) +
+# jetbrains annotations — all Maven Central.
+fluently = "1.3.2"
 
 [libraries]
 compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
@@ -87,6 +103,10 @@ koin-compose-viewmodel = { group = "io.insert-koin", name = "koin-compose-viewmo
 koin-core-viewmodel = { group = "io.insert-koin", name = "koin-core-viewmodel", version.ref = "koin" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
+# The Fluent (.ftl) parser/formatter (Task 5); see the fluently version
+# note above for the verification trail. commonMain-capable KMP artifact —
+# the whole i18n seam (parse + format) is multiplatform code.
+fluently-core = { group = "dev.karmakrafts.fluently", name = "fluently-core", version.ref = "fluently" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -7,10 +7,15 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.CompositionLocalProvider
+import kotlinx.coroutines.runBlocking
 import org.fauste.player.platform.AppLifecycleHolder
 import org.fauste.player.platform.AppLifecycleState
 import org.fauste.player.platform.audioReadPermission
 import org.fauste.player.ui.navigation.AppNavHost
+import org.fauste.player.ui.strings.FluentStrings
+import org.fauste.player.ui.strings.LocalStrings
+import org.fauste.player.ui.strings.currentLocaleTag
 import org.fauste.player.ui.theme.FausteTheme
 import org.fauste.player.viewmodel.LibraryViewModel
 import org.koin.android.ext.android.inject
@@ -110,10 +115,25 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         maybeRequestNotificationsPermission()
+        // THE I18N SEAM'S ONE PROVISION (Task 5): the locale-aware resolver,
+        // built from the platform's locale tag once per process
+        // ([FluentStrings.forLocale] memoizes per bundle, so a recreation
+        // — rotation, process restore — is a cache hit and a language
+        // change lands with the new tag's own cached bundle). This runs
+        // BEFORE the first frame, under the system's launch window, and
+        // the honest cost is the one-time Fluent parse (measured ~128 ms
+        // cold / ~12 ms warm per bundle on the JVM — the ANTLR runtime's
+        // first init dominates), not a per-frame or per-string cost.
+        // The alternative — an async load with an untranslated first
+        // composition — buys nothing the launch window does not already
+        // cover, so the blocking load is the simpler honest shape.
+        val strings = runBlocking { FluentStrings.forLocale(currentLocaleTag()) }
         setContent {
             KoinContext {
                 FausteTheme {
-                    AppNavHost(onImportClick = ::startImportFlow)
+                    CompositionLocalProvider(LocalStrings provides strings) {
+                        AppNavHost(onImportClick = ::startImportFlow)
+                    }
                 }
             }
         }

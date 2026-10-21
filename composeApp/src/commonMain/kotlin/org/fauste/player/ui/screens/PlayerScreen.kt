@@ -24,6 +24,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.fauste.player.ui.collectUiStateWithLifecycle
 import org.fauste.player.ui.components.PlayerControls
+import org.fauste.player.ui.strings.LocalStrings
+import org.fauste.player.ui.strings.StringKeys
+import org.fauste.player.ui.strings.render
 import org.fauste.player.ui.theme.NocturneColors
 import org.fauste.player.viewmodel.PlayerViewModel
 import org.koin.compose.viewmodel.koinViewModel
@@ -38,14 +41,16 @@ import org.koin.compose.viewmodel.koinViewModel
  * frame; even the ViewModel is resolved through Koin
  * ([koinViewModel]) by default rather than looked up ad hoc.
  *
- * Honest limits: the title is the state's em dash while no track is on air
+ * Honest limits: the title is the seam's unknown marker while no track
+ * is on air
  * (never a fake title); the artist line appears only when the FFI carries
  * one; the latest command error renders in the scheme's error colour while
  * non-null (errors are surfaced, never swallowed — and never a crash).
  *
  * The "Up next" line (Phase 5): it renders only while an ARM exists
  * ([PlayerUiState.upNextTitle] non-null) — the armed row's title from the
- * queue flow, or the em dash while the arm cannot be placed in it. Nothing
+ * queue flow, or the seam's unknown marker while the arm cannot be placed
+ * in it. Nothing
  * armed → no line: the surface carries no derived-next read, and rendering
  * one would be exactly the play-now promise the arm-only contract forbids.
  *
@@ -56,6 +61,7 @@ import org.koin.compose.viewmodel.koinViewModel
  */
 @Composable
 fun PlayerScreen(viewModel: PlayerViewModel = koinViewModel()) {
+    val strings = LocalStrings.current
     val state by viewModel.uiState.collectUiStateWithLifecycle()
     Column(
         modifier =
@@ -66,7 +72,10 @@ fun PlayerScreen(viewModel: PlayerViewModel = koinViewModel()) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = state.trackTitle,
+            // The raw title, blank while nothing is on air or the FFI
+            // carries none — the seam's unknown marker renders then, the
+            // honest-limits rule (never a fake title).
+            text = state.trackTitle.ifBlank { strings[StringKeys.UNKNOWN_VALUE] },
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onBackground,
             textAlign = TextAlign.Center,
@@ -88,7 +97,7 @@ fun PlayerScreen(viewModel: PlayerViewModel = koinViewModel()) {
         }
         state.error?.let { message ->
             Text(
-                text = message,
+                text = message.render(strings),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error,
                 textAlign = TextAlign.Center,
@@ -110,11 +119,13 @@ fun PlayerScreen(viewModel: PlayerViewModel = koinViewModel()) {
             onVolumeChange = viewModel::onVolume,
         )
         // The up-next line, under the controls: the armed row's title, or
-        // the honest em dash while the queue flow cannot place the arm.
+        // the honest unknown marker while the queue flow cannot place the
+        // arm.
         state.upNextTitle?.let { title ->
+            val upNext = strings[StringKeys.PLAYER_UP_NEXT, "title" to title.render(strings)]
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "Up next: $title",
+                text = upNext,
                 style = MaterialTheme.typography.bodyMedium,
                 color = NocturneColors.Warning,
                 textAlign = TextAlign.Center,
@@ -122,7 +133,7 @@ fun PlayerScreen(viewModel: PlayerViewModel = koinViewModel()) {
                     Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
-                        .semantics { contentDescription = "Up next: $title" },
+                        .semantics { contentDescription = upNext },
             )
         }
     }

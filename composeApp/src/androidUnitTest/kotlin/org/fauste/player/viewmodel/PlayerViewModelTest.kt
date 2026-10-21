@@ -16,6 +16,8 @@ import org.fauste.player.player.track
 import org.fauste.player.repository.PlaylistRepository
 import org.fauste.player.rust.EngineState
 import org.fauste.player.rust.FausteException
+import org.fauste.player.ui.strings.StringKeys
+import org.fauste.player.ui.strings.UiText
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -127,7 +129,12 @@ class PlayerViewModelTest {
         makeViewModel(engineState(status = "stopped"))
         scheduler.runCurrent()
 
-        assertEquals("—", viewModel.uiState.value.trackTitle)
+        // The state carries the RAW title (blank = nothing on air); the
+        // screen renders the i18n seam's unknown-marker key for the
+        // blank — the Task-5 migration moved the em dash from the state
+        // to the draw (TrackRow's unfilled duration follows the same
+        // rule).
+        assertEquals("", viewModel.uiState.value.trackTitle)
         assertNull(viewModel.uiState.value.trackArtist)
         assertFalse(viewModel.uiState.value.isPlaying)
     }
@@ -147,7 +154,7 @@ class PlayerViewModelTest {
         scheduler.runCurrent()
 
         assertEquals(
-            "Sea Breeze",
+            UiText.Raw("Sea Breeze"),
             viewModel.uiState.value.upNextTitle,
             "the line resolves the ARMED row's title from the queue flow, by id",
         )
@@ -157,7 +164,9 @@ class PlayerViewModelTest {
     fun anArmedEntryMissingFromTheQueueRendersTheHonestUnknownMarker() {
         // The remote-mutation staleness corner: the arm points at a row the
         // queue flow no longer carries — the line stays (the arm is real),
-        // with the unknown marker, never a fake title.
+        // with the unknown marker, never a fake title. KEY-BASED (Task 5):
+        // the marker travels as the bundle's id and only the render layer
+        // resolves it, so this asserts the id, not the em dash glyph.
         makeViewModel(engineState(status = "playing", armedEntryId = 9u))
         engine.playlist.value = listOf(playlistEntry(id = 1u, title = "Nocturne"))
         scheduler.runCurrent()
@@ -182,7 +191,7 @@ class PlayerViewModelTest {
         makeViewModel(engineState(status = "playing", armedEntryId = 2u))
         engine.playlist.value = listOf(playlistEntry(id = 2u, title = "Sea Breeze"))
         scheduler.runCurrent()
-        assertEquals("Sea Breeze", viewModel.uiState.value.upNextTitle)
+        assertEquals(UiText.Raw("Sea Breeze"), viewModel.uiState.value.upNextTitle)
 
         // The advance crossed into the armed entry: the engine reports the
         // arm consumed (the explicit flag cleared, reducer.rs:1322-1325) —
@@ -339,7 +348,11 @@ class PlayerViewModelTest {
         viewModel.onPlayPause()
         scheduler.runCurrent()
 
-        assertEquals(PlayerViewModel.BUSY_MESSAGE, viewModel.uiState.value.error)
+        assertEquals(
+            UiText.Key(StringKeys.PLAYER_BUSY),
+            viewModel.uiState.value.error,
+            "a dropped command surfaces the bundle's message id, not rendered copy",
+        )
 
         // No crash: the next intent runs, succeeds and clears the error.
         engine.playError = null
@@ -363,7 +376,7 @@ class PlayerViewModelTest {
         // The commit DID reach the engine layer (and was dropped there);
         // the dropped target must stop driving the UI.
         assertEquals(listOf(42.0), engine.seeks)
-        assertEquals(PlayerViewModel.BUSY_MESSAGE, viewModel.uiState.value.error)
+        assertEquals(UiText.Key(StringKeys.PLAYER_BUSY), viewModel.uiState.value.error)
         assertNull(viewModel.uiState.value.pendingSeekPosition)
         assertEquals(10.0, viewModel.uiState.value.position)
     }
@@ -377,6 +390,8 @@ class PlayerViewModelTest {
         viewModel.onPlayPause()
         scheduler.runCurrent()
 
-        assertEquals("disk on fire", viewModel.uiState.value.error)
+        // The engine's OWN message travels raw — the app does not own it
+        // and cannot translate it; the render layer shows it as-is.
+        assertEquals(UiText.Raw("disk on fire"), viewModel.uiState.value.error)
     }
 }

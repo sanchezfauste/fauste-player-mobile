@@ -24,6 +24,8 @@ import androidx.compose.ui.semantics.semantics
 import org.fauste.player.ui.screens.LibraryScreen
 import org.fauste.player.ui.screens.PlayerScreen
 import org.fauste.player.ui.screens.SettingsScreen
+import org.fauste.player.ui.strings.LocalStrings
+import org.fauste.player.ui.strings.StringKeys
 
 /**
  * The 3-destination app shell.
@@ -56,6 +58,7 @@ fun AppNavHost(
     onImportClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val strings = LocalStrings.current
     var currentRoute by rememberSaveable { mutableStateOf(AppDestinations.start.route) }
     val current = AppDestinations.fromRoute(currentRoute)
     Scaffold(
@@ -63,12 +66,17 @@ fun AppNavHost(
         bottomBar = {
             NavigationBar {
                 AppDestinations.entries.forEach { destination ->
+                    // The label resolves ONCE per composition here: the
+                    // item's visible text and its contentDescription are
+                    // the SAME resolved string, so TalkBack announces
+                    // exactly what the eye reads (the Task-5 i18n seam).
+                    val label = strings[destination.labelKey]
                     NavigationBarItem(
                         selected = destination == current,
                         onClick = { currentRoute = destination.route },
                         icon = { Icon(destination.icon, contentDescription = null) },
-                        label = { Text(destination.label) },
-                        modifier = Modifier.semantics { contentDescription = destination.label },
+                        label = { Text(label) },
+                        modifier = Modifier.semantics { contentDescription = label },
                     )
                 }
             }

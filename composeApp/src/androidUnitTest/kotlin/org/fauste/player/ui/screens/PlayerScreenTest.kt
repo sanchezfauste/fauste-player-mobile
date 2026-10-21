@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -25,6 +26,8 @@ import org.fauste.player.player.track
 import org.fauste.player.repository.PlaylistRepository
 import org.fauste.player.rust.FausteException
 import org.fauste.player.ui.ScreenTestLifecycleOwner
+import org.fauste.player.ui.strings.FluentStrings
+import org.fauste.player.ui.strings.StringKeys
 import org.fauste.player.ui.theme.FausteTheme
 import org.fauste.player.viewmodel.PlayerViewModel
 import org.junit.After
@@ -70,6 +73,11 @@ class PlayerScreenTest {
     private lateinit var queue: QueueManager
     private lateinit var repository: PlaylistRepository
     private lateinit var viewModel: PlayerViewModel
+
+    // The composition renders through LocalStrings' en-US default (the
+    // i18n seam's documented test shape); message assertions resolve the
+    // SAME memoized en-US resolver, so the suite never forks the copy.
+    private val enUs: FluentStrings by lazy { runBlocking { FluentStrings.forLocale("en-US") } }
 
     @Before
     fun setUp() {
@@ -195,9 +203,10 @@ class PlayerScreenTest {
 
         composeRule.onNodeWithContentDescription("Pause").performClick()
 
-        // The Busy drop surfaces as text in the error colour, not a crash.
+        // The Busy drop surfaces as text in the error colour, not a crash
+        // — rendered from the bundle's id by the seam's en-US default.
         composeRule.waitUntil(TIMEOUT_MILLIS) {
-            composeRule.onAllNodesWithText(PlayerViewModel.BUSY_MESSAGE).fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithText(enUs[StringKeys.PLAYER_BUSY]).fetchSemanticsNodes().isNotEmpty()
         }
     }
 

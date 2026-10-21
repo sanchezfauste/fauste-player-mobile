@@ -14,6 +14,8 @@ import org.fauste.player.repository.SettingsRepository
 import org.fauste.player.rust.BackendInfo
 import org.fauste.player.rust.FausteException
 import org.fauste.player.rust.RemoteInfo
+import org.fauste.player.ui.strings.StringKeys
+import org.fauste.player.ui.strings.UiText
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -274,7 +276,7 @@ class SettingsViewModelTest {
         // The commit DID reach the engine layer (and was dropped there);
         // the dropped target must stop driving the UI.
         assertEquals(listOf(0.9f), engine.setVolumes)
-        assertEquals(SettingsViewModel.BUSY_MESSAGE, viewModel.uiState.value.error)
+        assertEquals(UiText.Key(StringKeys.PLAYER_BUSY), viewModel.uiState.value.error)
         assertNull(viewModel.uiState.value.pendingVolume)
         assertEquals(0.5f, viewModel.uiState.value.volume)
 
@@ -300,7 +302,8 @@ class SettingsViewModelTest {
         viewModel.onSelectBackend("null")
         scheduler.runCurrent()
 
-        assertEquals("backend on fire", viewModel.uiState.value.error)
+        // The engine's own cause travels raw — the app does not own it.
+        assertEquals(UiText.Raw("backend on fire"), viewModel.uiState.value.error)
 
         engine.setBackendError = null
         viewModel.onSelectBackend("null")
@@ -319,7 +322,7 @@ class SettingsViewModelTest {
         viewModel.onRefreshRemote()
         scheduler.runCurrent()
 
-        assertEquals("the remote read failed", viewModel.uiState.value.error)
+        assertEquals(UiText.Raw("the remote read failed"), viewModel.uiState.value.error)
 
         engine.remoteStatusError = null
         viewModel.onRefreshRemote()
@@ -339,6 +342,6 @@ class SettingsViewModelTest {
         // The one-shot query mapped onto the error channel + an empty
         // list — the VM's one documented catch; never a crash.
         assertEquals(0, viewModel.uiState.value.backends.size)
-        assertEquals("the probe failed", viewModel.uiState.value.error)
+        assertEquals(UiText.Raw("the probe failed"), viewModel.uiState.value.error)
     }
 }

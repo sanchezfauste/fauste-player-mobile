@@ -27,6 +27,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import org.fauste.player.ui.collectUiStateWithLifecycle
+import org.fauste.player.ui.strings.LocalStrings
+import org.fauste.player.ui.strings.StringKeys
+import org.fauste.player.ui.strings.render
 import org.fauste.player.viewmodel.SettingsViewModel
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -50,7 +53,7 @@ import org.koin.compose.viewmodel.koinViewModel
  * Honest limits, never invented data: an empty backends list says so
  * (the probe has not answered — [error] carries the why when it
  * failed); the remote section shows the enabled flag and the socket
- * address, an em dash while the address is blank (the FFI's
+ * address, the seam's unknown marker while the address is blank (the FFI's
  * retrying-bind shape — an error field is the Phase-5 FFI candidate);
  * the volume slider shows the pending drag target while one is in
  * flight (instant feedback) with an "Applying…" label for the
@@ -59,6 +62,7 @@ import org.koin.compose.viewmodel.koinViewModel
  */
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
+    val strings = LocalStrings.current
     val state by viewModel.uiState.collectUiStateWithLifecycle()
     Column(
         modifier =
@@ -69,13 +73,13 @@ fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            text = "Output backend",
+            text = strings[StringKeys.SETTINGS_BACKEND_TITLE],
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onBackground,
         )
         if (state.backends.isEmpty()) {
             Text(
-                text = "No backends reported.",
+                text = strings[StringKeys.SETTINGS_NO_BACKENDS],
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -90,7 +94,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
             }
         }
         Text(
-            text = "Remote",
+            text = strings[StringKeys.SETTINGS_REMOTE_TITLE],
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onBackground,
         )
@@ -102,20 +106,26 @@ fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
             Text(
                 text =
                     if (state.remote.enabled) {
-                        "On at ${state.remote.address.ifBlank { "—" }}"
+                        // The honest unknown marker while the FFI's
+                        // retrying-bind shape carries a blank address —
+                        // never a made-up address.
+                        strings[
+                            StringKeys.SETTINGS_REMOTE_ON,
+                            "address" to state.remote.address.ifBlank { strings[StringKeys.UNKNOWN_VALUE] },
+                        ]
                     } else {
-                        "Off"
+                        strings[StringKeys.SETTINGS_REMOTE_OFF]
                     },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f),
             )
             TextButton(onClick = viewModel::onRefreshRemote) {
-                Text("Refresh")
+                Text(strings[StringKeys.SETTINGS_REFRESH])
             }
         }
         Text(
-            text = "Volume",
+            text = strings[StringKeys.SETTINGS_VOLUME_TITLE],
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onBackground,
         )
@@ -125,18 +135,18 @@ fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .semantics { contentDescription = "Volume" },
+                    .semantics { contentDescription = strings[StringKeys.CONTROL_VOLUME] },
         )
         if (state.pendingVolume != null) {
             Text(
-                text = "Applying…",
+                text = strings[StringKeys.SETTINGS_APPLYING],
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         state.error?.let { message ->
             Text(
-                text = message,
+                text = message.render(strings),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error,
             )
@@ -159,6 +169,7 @@ private fun BackendRow(
     selected: Boolean,
     onSelect: () -> Unit,
 ) {
+    val strings = LocalStrings.current
     Row(
         modifier =
             Modifier
@@ -166,9 +177,18 @@ private fun BackendRow(
                 .clickable(enabled = available, onClick = onSelect)
                 .padding(vertical = 8.dp)
                 .semantics {
-                    val availability = if (available) "available" else "unavailable"
-                    val selection = if (selected) "selected" else "not selected"
-                    contentDescription = "$name, $availability, $selection"
+                    // One spoken string carrying all three facts; the
+                    // Fluent selectors pick the availability/selection
+                    // words in the ACTIVE LOCALE (the i18n seam's most
+                    // selector-heavy message — the es-ES bundle selects
+                    // "disponible"/"seleccionado" the same way).
+                    contentDescription =
+                        strings[
+                            StringKeys.BACKEND_ROW,
+                            "name" to name,
+                            "available" to available,
+                            "selected" to selected,
+                        ]
                 },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -186,7 +206,7 @@ private fun BackendRow(
                     },
             )
             Text(
-                text = if (available) "Available" else "Unavailable",
+                text = strings[StringKeys.BACKEND_AVAILABILITY, "available" to available],
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
