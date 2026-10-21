@@ -11,7 +11,12 @@ ignore = [
   # `ttf-parser` is unmaintained, an informational notice (no vulnerability).
   # It parses the font of the Wayland title bar, through winit's sctk-adwaita
   # (ab_glyph), on Linux only. Revisit when sctk-adwaita moves to another parser.
-  { id = "RUSTSEC-2026-0192", reason = "unmaintained notice; title-bar font via winit's sctk-adwaita" },
+  # REMOVED 2026-10-21: the desktop 0.7.0 line no longer reaches this crate and
+  # the stale ignore tripped advisory-not-detected warnings.
+  # `basic-toml` is unmaintained (archived 2025-03; informational notice, no
+  # vulnerability). It reaches this workspace only through uniffi-bindgen's
+  # build-time toolchain. Revisit on the uniffi 0.28 upgrade.
+  { id = "RUSTSEC-2026-0374", reason = "unmaintained notice; uniffi-bindgen build-time tooling only, never in the shipped binary; resolves with a uniffi upgrade" },
   # `bincode` 1.x development has ceased (unmaintained-class notice, not an
   # exploitable vulnerability). It reaches this workspace only through
   # UniFFI's proc-macro.
