@@ -131,6 +131,14 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
+/** The four maintainer-supplied signing properties (see docs/release/signing.md). */
+private data class SigningProps(
+    val storeFile: String,
+    val storePassword: String,
+    val keyAlias: String,
+    val keyPassword: String,
+)
+
 android {
     namespace = "org.fauste.player"
     compileSdk = 36
@@ -141,6 +149,85 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+    }
+
+    // RELEASE SIGNING (Phase 5, Ruling 6 — documented, not invented): the
+    // config is PROPERTY-DRIVEN and entirely OPTIONAL. The four RELEASE_*
+    // properties are read from the Gradle properties available to the
+    // build (user-home ~/.gradle/gradle.properties — the recommended,
+    // inherently outside-the-repo location — or -P command-line flags);
+    // see docs/release/signing.md for the maintainer's setup (keystore
+    // creation commands + the exact property names). When ANY of the
+    // four is absent the release build stays UNSIGNED — assembleRelease
+    // and bundleRelease stay green (an unsigned APK/AAB is a legal build
+    // output) which is what CI exercises, while installation requires a
+    // signature, which is the maintainer's local step. NO keystore is
+    // committed, and none ever will be: .gitignore's *.jks/*.keystore
+    // rules make that a structural guarantee, and the recommended store
+    // locations (user-home gradle.properties, /tmp) sit outside the tree
+    // — see the signing doc.
+    val releaseSigning =
+        run {
+            fun prop(name: String): String? = providers.gradleProperty(name).orNull
+            val storeFile = prop("RELEASE_STORE_FILE")
+            val storePassword = prop("RELEASE_STORE_PASSWORD")
+            val keyAlias = prop("RELEASE_KEY_ALIAS")
+            val keyPassword = prop("RELEASE_KEY_PASSWORD")
+            // All four or nothing: a half-populated config would fail at
+            // packaging with a confusing keystore error instead of the
+            // honest unsigned build.
+            if (storeFile == null || storePassword == null || keyAlias == null || keyPassword == null) {
+                null
+            } else {
+                SigningProps(
+                    storeFile = storeFile,
+                    storePassword = storePassword,
+                    keyAlias = keyAlias,
+                    keyPassword = keyPassword,
+                )
+            }
+        }
+
+    signingConfigs {
+        // Registered even when unsigned so the release build type below
+        // can reference it unconditionally; its values are filled only
+        // under the all-four-properties contract.
+        create("release") {
+            releaseSigning?.let {
+                storeFile = rootProject.file(it.storeFile)
+                storePassword = it.storePassword
+                keyAlias = it.keyAlias
+                keyPassword = it.keyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // R8 + resource shrinking: the full release posture. The keep
+            // rules the classpath does not ship live in proguard-rules.pro
+            // (the UniFFI bindings' JNA surface + JNA itself — each rule
+            // verified against its artifact there); everything else ships
+            // its own consumer rules. The resulting APK is proven on the
+            // emulator (the release smoke), not assumed — see
+            // docs/release/measurements.md.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            // Present only when the four RELEASE_* properties are (see
+            // the signingConfigs block above); absent = the build type
+            // keeps NO signing config, which is AGP's honest unsigned
+            // release — packageable (app-release-unsigned.apk), not
+            // installable. Referencing the config unconditionally would
+            // make AGP demand a keystore even in the property-less CI
+            // shape, defeating the green-unsigned lane.
+            if (releaseSigning != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
     }
 
     buildFeatures {

@@ -63,7 +63,23 @@ jobs:
         # :composeApp:testDebugUnitTest runs the Robolectric-based Compose
         # UI tests on the host JVM (no emulator needed) — see
         # composeApp/build.gradle.kts's androidUnitTest note.
-        run: ./gradlew buildRust :fp-app-mobile-shared:test :composeApp:assembleDebug :composeApp:testDebugUnitTest
+        #
+        # assembleRelease + bundleRelease (Phase 5, Task 6 — the judgment,
+        # documented): the release lane rides the EXISTING android job, no
+        # separate workflow — R8/proguard-rule regressions are a
+        # per-change risk (any new reflective dependency needs a keep
+        # rule), and here they break CI instead of the maintainer's local
+        # signing step. Cost stays low because the release tasks share
+        # everything expensive with the lane's earlier work: buildRust's
+        # staged cdylibs, and one minifyReleaseWithR8 pass that both the
+        # APK and the AAB consume (bundleRelease after assembleRelease adds
+        # only bundle packaging). NO signing properties are set — CI builds
+        # the honest UNSIGNED release artifacts (assembleRelease with no
+        # RELEASE_* properties is green by design; see
+        # composeApp/build.gradle.kts and docs/release/signing.md); CI
+        # proves R8 + packaging, never identity, so no secrets exist to
+        # leak.
+        run: ./gradlew buildRust :fp-app-mobile-shared:test :composeApp:assembleDebug :composeApp:testDebugUnitTest :composeApp:assembleRelease :composeApp:bundleRelease
 
       # Bindings drift check: regenerate the Kotlin bindings into a temp dir
       # and diff against the committed files. ktlint is pinned to 1.7.1 and

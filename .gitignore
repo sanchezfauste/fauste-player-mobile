@@ -7,6 +7,15 @@ local.properties
 .kotlin/
 .superpowers/
 
+# Release signing material (Phase 5, Ruling 6): NO keystore is committed.
+# The release build reads its signing properties from OUTSIDE the repo
+# (user-home gradle.properties or -P flags — docs/release/signing.md);
+# this rule is the belt-and-braces guarantee that a keystore dropped
+# anywhere in the tree can never be committed by accident.
+*.jks
+*.keystore
+*.keystore.b64
+
 # Native libraries staged by the composeApp `buildRust` task from the Rust
 # workspace; they are build outputs, rebuilt via cargo-ndk on every preBuild.
 composeApp/src/main/jniLibs/
