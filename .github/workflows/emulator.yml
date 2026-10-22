@@ -88,6 +88,17 @@ jobs:
       - name: Android Rust target (x86_64)
         run: rustup target add x86_64-linux-android
 
+      # cargo-ndk (the script's build phase) needs an NDK under
+      # $ANDROID_HOME/ndk — the hosted image no longer guarantees one
+      # (it already dropped cmdline-tools from PATH). Install the same
+      # pinned NDK the Android lane uses.
+      - name: Android NDK
+        run: |
+          SDKMGR="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMGR"
+          yes | "$SDKMGR" --licenses > /dev/null
+          "$SDKMGR" "ndk;27.0.12077973"
+
       # KVM is present on ubuntu-latest but the udev rule is needed for the
       # runner user to get rw access (same fix android-emulator-runner
       # documents). The script checks [ -r /dev/kvm ] && [ -w /dev/kvm ].
@@ -96,6 +107,11 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+          # The udev re-trigger does not reliably re-apply the mode to an
+          # already-present node on the hosted runners (round 3: the
+          # check below failed right after the trigger) — chmod is the
+          # deterministic belt-and-braces.
+          sudo chmod 666 /dev/kvm
           test -r /dev/kvm && test -w /dev/kvm
 
       # The whole test phase — provisioning, boot, build, push, run,

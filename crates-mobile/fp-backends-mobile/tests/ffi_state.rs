@@ -107,11 +107,14 @@ fn wait_until(what: &str, mut probe: impl FnMut() -> bool) {
 }
 
 /// The boundary-wait shape: like [wait_until], but with the budget the
-/// real-time crossings need (the `set_next` tests' 5 s — a ~1 s entry
-/// must PLAY TO ITS END before the advance lands, and the full suite
-/// runs in parallel, so a 2 s budget races the machine's load).
+/// real-time crossings need — a ~1 s entry must PLAY TO ITS END before
+/// the advance lands, the full suite runs in parallel, and a shared
+/// 4-vCPU CI runner can starve the engine's real-time thread well past
+/// the nominal play-out (a 5 s budget lost that race once on GitHub).
+/// The 10 s must stay BELOW the armed tests' natural-chain gamma
+/// (~21 s: 1 + 10 + 10) so a no-op arm still times out here.
 fn wait_boundary(what: &str, mut probe: impl FnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(10);
     while !probe() {
         assert!(Instant::now() < deadline, "timeout waiting for {what}");
         std::thread::sleep(Duration::from_millis(10));
@@ -485,7 +488,7 @@ fn set_next_while_stopped_arms_the_entry_a_later_play_starts() {
 
     engine.play().expect("play the armed entry");
     assert_eq!(wait_status(&engine, "playing"), "playing");
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(8);
     loop {
         let title = engine.get_state().current_track.map(|t| t.title);
         if title.as_deref() == Some("gamma") {
@@ -495,7 +498,7 @@ fn set_next_while_stopped_arms_the_entry_a_later_play_starts() {
             Instant::now() < deadline,
             "Play started {title:?} instead of the armed gamma — the \
              natural chain (alpha ~1 s then beta ~10 s) cannot reach \
-             gamma inside the 5 s budget, so this timeout means the arm \
+             gamma inside the 8 s budget, so this timeout means the arm \
              was lost or misapplied"
         );
         std::thread::sleep(Duration::from_millis(10));
@@ -507,7 +510,7 @@ fn set_next_while_stopped_arms_the_entry_a_later_play_starts() {
 /// `set_next` while PLAYING: what is on air plays to its end and the
 /// conductor then starts the ARMED entry, not the natural successor.
 /// alpha lasts ~1 s while beta and gamma last ~10 s each, so the
-/// natural order could not reach gamma inside the 5 s budget — seeing
+/// natural order could not reach gamma inside the 8 s budget — seeing
 /// gamma at all proves the jump redirected the auto-advance. A missing
 /// entry is refused up front, the same pre-check as `remove_entry`
 /// (and the remote API's plan, `fp-remote/src/api.rs:156-160`).
@@ -546,7 +549,7 @@ fn set_next_redirects_the_auto_advance_to_the_armed_entry() {
         "SetNext never touches the transport: alpha keeps playing"
     );
 
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(8);
     loop {
         let title = engine.get_state().current_track.map(|t| t.title);
         if title.as_deref() == Some("gamma") {

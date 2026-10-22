@@ -41,6 +41,17 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      # The shared module's test tasks build the HOST cdylib inside Gradle
+      # (buildHostCdylib), and the host graph pulls the desktop's Linux
+      # audio stack — the same ALSA/dbus headers the CI lane installs
+      # (proved needed in round 3: buildHostCdylib exited 101 without them
+      # while the android-target build stayed green — alsa-sys is
+      # host-graph-only).
+      - name: Native build dependencies
+        run: >
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          pkg-config libasound2-dev libdbus-1-dev
+
       # ubuntu-latest has the Android SDK at $ANDROID_HOME but does NOT put
       # cmdline-tools on PATH; call sdkmanager by its full path. The image no
       # longer ships this NDK — the step installs the pinned one.
