@@ -21,12 +21,18 @@ jobs:
       # checkout@v4 accepts paths outside $GITHUB_WORKSPACE. ref rides the
       # desktop tip — pin a SHA here if CI should become flaky-coupled to
       # desktop changes.
+      # actions/checkout@v4 refuses paths outside $GITHUB_WORKSPACE, but the
+      # workspace manifests declare the desktop crates as ../fauste-player
+      # (a sibling, mirroring the local layout). Check out inside the
+      # workspace, then symlink it into the sibling slot the manifests expect.
       - name: Check out the desktop repo (path dependencies)
         uses: actions/checkout@v4
         with:
           repository: sanchezfauste/fauste-player
           ref: master
-          path: ../fauste-player
+          path: fauste-player
+      - name: Expose the desktop checkout at the sibling path the manifests expect
+        run: ln -s "$GITHUB_WORKSPACE/fauste-player" "$(dirname "$GITHUB_WORKSPACE")/fauste-player"
 
       # Installs exactly the toolchain pinned in rust-toolchain.toml (1.98.1)
       # with the rustfmt/clippy components it requests.

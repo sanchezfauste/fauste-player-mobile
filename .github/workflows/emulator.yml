@@ -41,12 +41,18 @@ jobs:
 
       # Path deps resolve ../fauste-player relative to this repo's checkout;
       # same as the CI and Android lanes.
+      # actions/checkout@v4 refuses paths outside $GITHUB_WORKSPACE, but the
+      # workspace manifests declare the desktop crates as ../fauste-player
+      # (a sibling, mirroring the local layout). Check out inside the
+      # workspace, then symlink it into the sibling slot the manifests expect.
       - name: Check out the desktop repo (path dependencies)
         uses: actions/checkout@v4
         with:
           repository: sanchezfauste/fauste-player
           ref: master
-          path: ../fauste-player
+          path: fauste-player
+      - name: Expose the desktop checkout at the sibling path the manifests expect
+        run: ln -s "$GITHUB_WORKSPACE/fauste-player" "$(dirname "$GITHUB_WORKSPACE")/fauste-player"
 
       # sdkmanager/avdmanager (invoked by scripts/emulator-test.sh) are Java
       # tools. Not needed for Gradle — this lane never touches Gradle.
