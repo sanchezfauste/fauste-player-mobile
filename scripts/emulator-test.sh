@@ -23,7 +23,15 @@ AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
 ADB="$ANDROID_HOME/platform-tools/adb"
 EMULATOR="$ANDROID_HOME/emulator/emulator"
 AVD_NAME="fauste-test"
-AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android}"
+# Pin the AVD home for BOTH tools: the Java avdmanager and the native
+# emulator must agree on where AVDs live, and on CI runners (which set
+# differing ANDROID_* env vars than a desktop install) the Java tool can
+# create the AVD somewhere the emulator never searches. Pinning both envs
+# makes every precedence rule land on the same directory — and locally this
+# is byte-identical to the historical default ($HOME/.android/avd).
+export ANDROID_USER_HOME="${ANDROID_USER_HOME:-$HOME/.android}"
+export ANDROID_AVD_HOME="${ANDROID_AVD_HOME:-$ANDROID_USER_HOME/avd}"
+mkdir -p "$ANDROID_AVD_HOME"
 IMAGE="system-images;android-34;google_apis;x86_64"
 SERIAL=""
 EMULATOR_PID=""
@@ -62,12 +70,19 @@ install_pkg() {
 install_pkg "$IMAGE"
 install_pkg emulator
 
-if [ -d "$AVD_HOME/avd/$AVD_NAME.avd" ]; then
+if [ -d "$ANDROID_AVD_HOME/$AVD_NAME.avd" ]; then
     say "AVD present: $AVD_NAME"
 else
     say "creating AVD: $AVD_NAME"
     echo no | "$AVDMANAGER" create avd -n "$AVD_NAME" -k "$IMAGE" -d pixel_6 --force \
         || die "avdmanager create avd failed"
+    # avdmanager can exit 0 while having written the AVD somewhere else
+    # (env divergence on CI runners). Verify it landed where the emulator
+    # will look — fail loudly instead of booting into "Unknown AVD name".
+    # (The descriptor ini sits beside the .avd dir, per the emulator's own
+    # error text: "no file fauste-test.ini in <avd home>".)
+    [ -f "$ANDROID_AVD_HOME/$AVD_NAME.ini" ] \
+        || die "AVD missing from $ANDROID_AVD_HOME after create (tool/env divergence)"
 fi
 
 SERIAL=$("$ADB" devices | awk '$1 ~ /^emulator-/ && $2 == "device" { print $1; exit }')

@@ -41,11 +41,15 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      # ubuntu-latest has the Android SDK preinstalled but not this NDK.
+      # ubuntu-latest has the Android SDK at $ANDROID_HOME but does NOT put
+      # cmdline-tools on PATH; call sdkmanager by its full path. The image no
+      # longer ships this NDK — the step installs the pinned one.
       - name: Android SDK components
         run: |
-          yes | sdkmanager --licenses > /dev/null
-          sdkmanager \
+          SDKMGR="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMGR"
+          yes | "$SDKMGR" --licenses > /dev/null
+          "$SDKMGR" \
             "platform-tools" \
             "platforms;android-36" \
             "build-tools;36.0.0" \

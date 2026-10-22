@@ -17,14 +17,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Path deps resolve ../fauste-player relative to this repo's checkout;
-      # checkout@v4 accepts paths outside $GITHUB_WORKSPACE. ref rides the
-      # desktop tip — pin a SHA here if CI should become flaky-coupled to
-      # desktop changes.
       # actions/checkout@v4 refuses paths outside $GITHUB_WORKSPACE, but the
       # workspace manifests declare the desktop crates as ../fauste-player
       # (a sibling, mirroring the local layout). Check out inside the
       # workspace, then symlink it into the sibling slot the manifests expect.
+      # ref rides the desktop tip — pin a SHA here if CI should become
+      # flaky-coupled to desktop changes.
       - name: Check out the desktop repo (path dependencies)
         uses: actions/checkout@v4
         with:
@@ -33,6 +31,14 @@ jobs:
           path: fauste-player
       - name: Expose the desktop checkout at the sibling path the manifests expect
         run: ln -s "$GITHUB_WORKSPACE/fauste-player" "$(dirname "$GITHUB_WORKSPACE")/fauste-player"
+
+      # The workspace compiles the desktop's crates via path dependencies;
+      # their Linux audio stack needs the ALSA headers (the desktop's own CI
+      # installs the same). dbus is cheap insurance for the config crates.
+      - name: Native build dependencies
+        run: >
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          pkg-config libasound2-dev libdbus-1-dev
 
       # Installs exactly the toolchain pinned in rust-toolchain.toml (1.98.1)
       # with the rustfmt/clippy components it requests.

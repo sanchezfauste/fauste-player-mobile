@@ -54,6 +54,15 @@ jobs:
       - name: Expose the desktop checkout at the sibling path the manifests expect
         run: ln -s "$GITHUB_WORKSPACE/fauste-player" "$(dirname "$GITHUB_WORKSPACE")/fauste-player"
 
+      # Native build dependencies: the lane compiles the desktop's crates
+      # for the android target, whose build scripts run on the host — the
+      # same ALSA/dbus headers the CI lane installs. Cheap insurance that
+      # removes a whole class of host-side build-script failures.
+      - name: Native build dependencies
+        run: >
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          pkg-config libasound2-dev libdbus-1-dev
+
       # sdkmanager/avdmanager (invoked by scripts/emulator-test.sh) are Java
       # tools. Not needed for Gradle — this lane never touches Gradle.
       - uses: actions/setup-java@v4
