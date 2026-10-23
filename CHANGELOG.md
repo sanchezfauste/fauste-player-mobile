@@ -2,8 +2,19 @@
 
 ## [Unreleased]
 
+### Documentation
+
+* **mobile:** user guide book with emulator screenshots ([cf2db63](https://github.com/sanchezfauste/fauste-player-mobile/commit/cf2db63df3c05b5ea299112a5da210f3ec38abc3))
+* **mobile:** technical documentation and project root files at desktop parity ([ac11e2f](https://github.com/sanchezfauste/fauste-player-mobile/commit/ac11e2f52d216de5ac0d52d005ebb81bed65e3e9))
+
+### Miscellaneous Chores
+
+* **mobile:** re-lock the desktop path dependencies at 0.8.0 ([a98f696](https://github.com/sanchezfauste/fauste-player-mobile/commit/a98f696e8a6c51799d6d290755c47bf47a60e983))
+
 ### Bug Fixes
 
+* **ci:** retry sdkmanager package installs against cdn download flakes ([889b168](https://github.com/sanchezfauste/fauste-player-mobile/commit/889b16820becf2b901df788dafffeaa056fa6553))
+* **ci:** host build deps in the android lane kvm chmod and ci-sized test budgets ([1a95337](https://github.com/sanchezfauste/fauste-player-mobile/commit/1a953378cf17c6f5ecb9919ba84efc0ba9cfa1c3))
 * **ci:** full-path sdkmanager pinned avd home and native build deps ([54d8e79](https://github.com/sanchezfauste/fauste-player-mobile/commit/54d8e791a1c66eb1725beac80a6f3d9046cec57d))
 * **ci:** checkout the desktop repo inside the workspace and symlink the sibling path ([c39f4c6](https://github.com/sanchezfauste/fauste-player-mobile/commit/c39f4c61af2c41e20ab921be16b8263b1c7cadf6))
 

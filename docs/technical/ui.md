@@ -129,9 +129,12 @@ desktop repo's live `theme.rs` has **drifted** (its accent is now
 lavender, not the Fauste teal `#00BFA6`) — the ruling binds the mobile
 to the spec, not the desktop's current palette, and the file header
 says renaming or re-hexing an entry is a spec change, not a cleanup.
-Typography is Inter (UI) and JetBrains Mono (timecode), bundled under
-`composeResources/font/` with the OFL notice, loaded through CMP's
-resource runtime. Dark-only.
+Typography is Inter (UI) — bundled under `composeResources/font/`
+with its OFL notice (`composeResources/files/inter_ofl.txt`), loaded
+through CMP's resource runtime. The timecode deliberately falls back to
+the platform's `FontFamily.Monospace`: no licensed JetBrains Mono TTF
+exists in either repo, and the recorded Phase-4 ruling chose the
+platform monospace over bundling an unverified font. Dark-only.
 
 ## Fluent i18n
 

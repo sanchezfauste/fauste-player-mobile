@@ -63,8 +63,8 @@ mobile has no Services layer, so a dedicated thread ports that half:
 On start, the store's restore rebuilds the player **paused at its last
 saved position** — an interrupted track comes back Paused, a
 never-played queue comes back stopped, and **nothing is ever restored
-as Playing** (`fp-model/src/session.rs:297-301`; the desktop's
-`EngineAction::LoadPaused` path). A sticky service restart after a
+as Playing** (`fp-model/src/session.rs:134-135` states it outright;
+`EngineAction::LoadPaused` at `:246` enforces it). A sticky service restart after a
 process kill re-attaches to exactly this state and exits quietly: the
 fresh process cannot be playing, and no zombie notification is posted.
 

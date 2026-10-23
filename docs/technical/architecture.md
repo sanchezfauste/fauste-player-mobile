@@ -41,8 +41,12 @@ desktop UI itself sends ([FFI boundary](ffi.md)).
 `Cargo.toml` declares the members under `crates-mobile/*` and the
 desktop crates as `fp-*` path dependencies into `../fauste-player`, so
 a moved or missing desktop checkout fails at parse time. `Cargo.lock`
-is committed: builds are reproducible, and a desktop change cannot
-alter the mobile build silently between checkouts. The toolchain pin
+is committed: third-party crate versions are pinned and reproducible —
+but the desktop path dependencies' content flows in live (CI checks
+the desktop out at `master`, unpinned, so a desktop bump re-locks the
+path entries and can change behavior between checkouts; the
+ride-the-tip tradeoff is recorded in the phase-0 plan and the
+workflows' checkout comments). The toolchain pin
 (`rust-toolchain.toml`, Rust 1.98.1) matches the desktop's.
 
 Workspace lints forbid `unsafe_code` and deny `unwrap`, `expect` and

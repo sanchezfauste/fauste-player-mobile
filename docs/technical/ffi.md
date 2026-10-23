@@ -91,8 +91,9 @@ consequences, by design: the first switch after boot makes the remote
 rebind once — to the same address — and later switches never touch the
 remote at all; and while the server is not listening (still starting,
 or a failed bind) the port is left alone. Pinned end-to-end in
-`tests/ffi_state.rs`: `set_backend_keeps_the_remote_on_its_ephemeral_port`
-and the model-level normalization test.
+`tests/ffi_state.rs`: `remote_status_reports_the_ephemeral_loopback_server`
+and `set_backend_round_trips_without_moving_the_remote`, plus the
+model-level normalization test.
 
 ## Bindings regeneration and the drift check
 
