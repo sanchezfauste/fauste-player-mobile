@@ -1,0 +1,16 @@
+# The mobile user guide as a book, mirroring the desktop guide's shape (the
+# sibling repository's docs/book.toml). English-only for now: the desktop's
+# translation pipeline (docs/i18n/<lang> staged and built through
+# scripts/site/, with the language-menu book-assets) is deliberately NOT
+# ported yet — wiring that pipeline into this repository is a follow-up.
+# Build with mdbook from the repository root: `mdbook build docs`.
+[book]
+title = "Fauste Player Mobile — User guide"
+language = "en"
+src = "user"
+
+[output.html]
+git-repository-url = "https://github.com/sanchezfauste/fauste-player-mobile"
+# {path} is relative to docs/ (user/...). This repository's default branch
+# is main (the desktop uses master).
+edit-url-template = "https://github.com/sanchezfauste/fauste-player-mobile/edit/main/docs/{path}"
