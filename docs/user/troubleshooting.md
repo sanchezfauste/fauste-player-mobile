@@ -29,10 +29,15 @@ that failed to import is never added to the queue. The causes:
 
 - **The audio permission is missing.** The line says so; grant it and tap
   **Import** again.
-- **The file could not be read** (unreadable, an I/O error) or **is not an
-  importable audio file** (an unsupported type). The copy is cleaned up;
-  the queue is untouched. Keep the file somewhere safe, check it plays
-  elsewhere, and try again.
+- **The file could not be read** (unreadable, an I/O error). The partial
+  copy is cleaned up; the queue is untouched. Keep the file somewhere
+  safe, check it plays elsewhere, and try again.
+- **The command queue was full.** Rare, and the line says so; tapping
+  **Import** again retries safely.
+
+One honest limit: importing does not check that a file is playable audio.
+An unsupported or corrupt file is not rejected at import — it imports,
+shows as a normal queue row, and fails when you play it.
 
 Importing copies files; if storage is full the copy fails the same honest
 way (see [Data and backups](data-and-backups.md) for where the copies
@@ -41,9 +46,8 @@ land).
 ## Crash reports
 
 App crashes land in `files/crash/`, engine panics in `files/logs/`, both in
-the app's private storage. Attach them to a bug report — see
-[Data and backups](data-and-backups.md) for the locations and how to read
-them.
+the app's private storage. See [Data and backups](data-and-backups.md)
+for the locations and how to read them.
 
 ## The app's language
 

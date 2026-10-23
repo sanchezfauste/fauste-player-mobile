@@ -17,7 +17,9 @@ or x86_64 device.
 
 ## First launch
 
-The app asks for two permissions, each the first time it needs it:
+The app asks for two permissions at two different moments:
+**Notifications** at first launch, and the storage one the first time
+you tap **Import**:
 
 - **Music and audio access** (Android 13 and newer) or **read external
   storage** (older devices). Required to import files. Deny it and the

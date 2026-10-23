@@ -5,9 +5,9 @@ Playback continues when you leave the app or lock the screen.
 ## The notification and the lock screen
 
 While something plays, the app keeps a **playback notification** (channel
-*Playback*) with play/pause and **Stop** actions. Tapping the notification
-returns to the app. On the lock screen, the system's media controls offer
-the same actions.
+*Playback*) with play/pause, **Previous** and **Stop** actions. Tapping
+the notification returns to the app. On the lock screen, the system's
+media controls offer the same actions.
 
 - **Stop** (the notification action) ends playback and removes the
   notification and its foreground service cleanly.
@@ -39,12 +39,15 @@ See [Data and backups](data-and-backups.md) for what is saved and when.
 
 ## The honest limits
 
-- **Play started through the loopback remote on a fully-stopped app does
-  not raise a notification.** The remote (see
-  [Settings](settings.md#remote)) can start the engine's playback while the
-  app is stopped; the audio plays, but the notification and the foreground
-  service belong to the app's own playback path and are not raised
-  retroactively. Start playback from the app once and the notification is
-  back.
-- The lock-screen controls and the notification offer play/pause and
-  **Stop**; they do not browse the queue or arm tracks.
+- **A play started through the loopback remote while the app is stopped
+  and in the background raises no notification.** The remote (see
+  [Settings](settings.md#remote)) can start the engine's playback while
+  the app is stopped; the audio plays, but the notification and the
+  foreground service belong to the app's own playback path, and with the
+  app in the background that path is not watching — they are not raised
+  retroactively. With the app in the foreground, the same play raises the
+  notification normally. Opening the app brings the notification back;
+  there is nothing to press (a **Play** press on an engine that is
+  already playing would advance the track).
+- The lock-screen controls and the notification offer play/pause,
+  **Previous** and **Stop**; they do not browse the queue or arm tracks.

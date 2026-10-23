@@ -14,7 +14,8 @@ A force-kill can lose at most the very last instant; reopening restores the
 queue and the paused position (see
 [Background playback](background-playback.md#if-the-app-is-killed)). There
 is no export or import of the session: the queue is rebuilt by importing
-files again.
+files again. The app does not watch folders: the queue is what you
+import, nothing more.
 
 ## Where everything lives
 
@@ -35,9 +36,11 @@ of your music is the originals you keep elsewhere.
 ## Crash reports
 
 If the app ever crashes on you, a report lands in `files/crash/`; a panic
-in the engine lands in `files/logs/`. On a debug build they are readable
-with `adb` (or a file manager with the app's data); on a release build,
-take them off a bug report. Attach both files when reporting a bug.
+in the engine lands in `files/logs/`. On a debug build you can find both
+there, readable with `adb` (or a file manager with the app's data), and
+attach them to your bug report. On a release build you cannot read them
+yourself — the storage is private to the app — so report the crash and
+the maintainer will ask for whatever is needed.
 
 ## Uninstalling
 

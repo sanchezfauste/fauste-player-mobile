@@ -27,13 +27,18 @@ dot instead.
 
 When a track ends, the next one starts by itself: with nothing armed, the
 engine follows the queue's order; with something armed, the advance crosses
-into the armed track. When the last track ends, playback stops. The queue
-is not cleared — press **Play** to start it again, and arm a row first if
-you want a specific track.
+into the armed track. When the last track ends, playback stops. One
+corner: arming a track while the last entry plays does not override the
+stop — playback still stops at that entry's end, the arm is kept, and the
+next **Play** starts the armed track. The queue is not cleared — press
+**Play** to start it again, and arm a row first if you want a specific
+track.
 
-**Previous**, on the Player screen, steps back to the track you last left.
-It only does something **while playing** — it is a live-playback control,
-not a queue cursor; while paused or stopped it does nothing.
+**Previous**, on the Player screen, steps back to the track you last left,
+and re-arms the entry you leave: after a **Previous**, the **UP NEXT**
+badge moves to the track you just left, so it plays next. It only does
+something **while playing** — it is a live-playback control, not a queue
+cursor; while paused or stopped it does nothing.
 
 ![The Library screen: queue rows, the teal dot on the track on air and the amber UP NEXT badge on the armed row](../images/library-queue.png)
 

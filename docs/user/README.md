@@ -39,10 +39,10 @@ your phone.
 
 The queue is a flat list. There are no playlists, no drag-reordering, no
 waveform, no cue points and no cartwall: those are roadmap items, not hidden
-switches. Track durations read "—" until the analysis layer ships, and rows
-(and the Player title) show the internal name of the imported copy rather
-than the original file's name. Artists show only when the file carries the
-tag. The honest, current list is the
+switches. Track durations read "—" until the analysis layer ships, rows (and the
+Player title) show the internal name of the imported copy rather than the
+original file's name, and artists are not read yet — nothing on mobile
+reads the files' tags. The honest, current list is the
 [feature table in the repository's README](https://github.com/sanchezfauste/fauste-player-mobile#features).
 
 The interface is available in English (en-US) and Spanish (es-ES) and
