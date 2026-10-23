@@ -57,14 +57,25 @@ install_pkg() {
     # SIGPIPE and the pipeline reports 141 even on success.
     if "$SDKMANAGER" --list_installed 2>/dev/null | grep -- "$1" >/dev/null; then
         say "package present: $1"
-    else
-        say "installing $1"
+        return 0
+    fi
+    # sdkmanager's CDN downloads flake on CI runners (observed in round 4:
+    # "Error on ZipFile unknown archive" mid-download of the system image,
+    # leaving a corrupt zip) — retry before giving up; each attempt
+    # re-downloads over the broken artifacts.
+    local attempt
+    for attempt in 1 2 3; do
+        say "installing $1 (attempt $attempt)"
         # 'yes' answers license prompts; it dies with SIGPIPE when sdkmanager
         # stops reading, so do not trust the pipeline status — verify instead.
         yes | "$SDKMANAGER" --install "$1" || true
-        "$SDKMANAGER" --list_installed 2>/dev/null | grep -- "$1" >/dev/null \
-            || die "sdkmanager install $1 failed"
-    fi
+        if "$SDKMANAGER" --list_installed 2>/dev/null | grep -- "$1" >/dev/null; then
+            return 0
+        fi
+        say "attempt $attempt for $1 did not verify; retrying"
+        sleep 5
+    done
+    die "sdkmanager install $1 failed after 3 attempts"
 }
 
 install_pkg "$IMAGE"
