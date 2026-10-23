@@ -646,7 +646,7 @@ dependencies = [
 
 [[package]]
 name = "fp-analysis"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "crossbeam-channel",
  "fp-decode",
@@ -662,7 +662,7 @@ dependencies = [
 
 [[package]]
 name = "fp-backends"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "alsa",
  "audio_thread_priority",
@@ -695,7 +695,7 @@ dependencies = [
 
 [[package]]
 name = "fp-decode"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "ape-decoder",
  "opus-decoder",
@@ -707,11 +707,11 @@ dependencies = [
 
 [[package]]
 name = "fp-dsp"
-version = "0.7.0"
+version = "0.8.0"
 
 [[package]]
 name = "fp-engine"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "arc-swap",
  "audioadapter-buffers",
@@ -729,7 +729,7 @@ dependencies = [
 
 [[package]]
 name = "fp-model"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -737,7 +737,7 @@ dependencies = [
 
 [[package]]
 name = "fp-remote"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "arc-swap",
  "axum",
@@ -754,7 +754,7 @@ dependencies = [
 
 [[package]]
 name = "fp-store"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "directories",
  "fp-model",
