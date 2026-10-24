@@ -20,6 +20,10 @@
 * **ci:** full-path sdkmanager pinned avd home and native build deps ([54d8e79](https://github.com/sanchezfauste/fauste-player-mobile/commit/54d8e791a1c66eb1725beac80a6f3d9046cec57d))
 * **ci:** checkout the desktop repo inside the workspace and symlink the sibling path ([c39f4c6](https://github.com/sanchezfauste/fauste-player-mobile/commit/c39f4c61af2c41e20ab921be16b8263b1c7cadf6))
 
+### Build System
+
+* **mobile:** release-please automation with version.txt as the app version source ([1c11b96](https://github.com/sanchezfauste/fauste-player-mobile/commit/1c11b96bd3474cdbd8ee5185c8674ce39ff6a18d))
+
 ## [0.1.0](https://github.com/sanchezfauste/fauste-player-mobile/compare/3d0d7ee69cba6fa991ad066c2376af0388578ef5...v0.1.0) (2026-10-21)
 
 The first release: a standalone, offline-first Android audio player —
