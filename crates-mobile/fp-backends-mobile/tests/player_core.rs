@@ -253,8 +253,10 @@ fn dropping_the_core_flushes_a_final_save_within_the_debounce() {
 #[test]
 fn while_playing_the_session_saves_at_the_injected_interval() {
     let dirs = TempDirs::new("playing-interval");
-    // 10 s of audio: playback must outlive the test's observation window.
-    let wav = tiny_wav(&dirs.cache, "long.wav", 441_000);
+    // 30 s of audio: playback must outlive even a pathologically starved
+    // observation window (the CI-runner class that has twice taught this
+    // file its fixed windows were too tight).
+    let wav = tiny_wav(&dirs.cache, "long.wav", 441_000 * 3);
     let debounce = Duration::from_millis(60);
     let core = PlayerCore::with_save_timing(dirs.data.clone(), dirs.cache.clone(), debounce)
         .expect("construction with the injected save timing");
@@ -281,23 +283,50 @@ fn while_playing_the_session_saves_at_the_injected_interval() {
             .is_some_and(|p| p.transport != fp_model::player::Transport::Stopped)
     });
     let session = store_paths(&dirs.data).session_file();
-    // Let the enqueue+play mutations' quiet saves settle: each dirtied the
-    // model, each saves within one debounce, and nothing may mutate after.
-    std::thread::sleep(debounce * 4);
-    let settled = mtime(&session).expect("session.json written by the quiet saves");
-
-    // The playing branch: at least one more write within a few intervals,
-    // though nothing mutated — only `playing && session_due` can write.
-    let deadline = Instant::now() + debounce * 8;
+    // Wait for the boot save to LAND first (bounded: a loaded CI runner
+    // can starve the save thread past any fixed multiple of the debounce
+    // — the settled-core test learned this on GitHub). The enqueue+play
+    // mutations' quiet save follows within its own debounce after that.
+    let boot_deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        if mtime(&session).is_some_and(|at| at > settled) {
+        if mtime(&session).is_some() {
             break;
         }
         assert!(
-            Instant::now() < deadline,
-            "the playing save never rewrote session.json"
+            Instant::now() < boot_deadline,
+            "the boot save never landed within 5 s"
         );
-        std::thread::sleep(Duration::from_millis(5));
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    // The quiet window: with the mutations saved and nothing mutating
+    // further, any NEW write past `baseline` can only come from the
+    // playing branch — except for at most one straggling mutation save,
+    // which is why the observation below requires a PAIR of writes: a
+    // single stray late save cannot fake two.
+    std::thread::sleep(debounce * 4);
+    let mut baseline = mtime(&session).expect("session.json written by the saves");
+
+    // The playing branch writes REPEATEDLY during steady playback though
+    // nothing mutated — only `playing && session_due` can write. The
+    // nominal cadence is one debounce plus one poll (~75 ms at the
+    // injected timing); the 5 s budgets are ~60x that margin for
+    // starved CI runners, and still well inside the 30 s of audio.
+    for write in 1..=2_u8 {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let at = loop {
+            match mtime(&session) {
+                Some(at) if at > baseline => break at,
+                _ => {
+                    assert!(
+                        Instant::now() < deadline,
+                        "the playing save never rewrote session.json \
+                         (write {write} of 2)"
+                    );
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            }
+        };
+        baseline = at;
     }
     drop(core);
 }
