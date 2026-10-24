@@ -2,8 +2,16 @@ name: Emulator
 
 on:
   pull_request:
+    paths-ignore:
+      # Markdown-only changes cannot affect any lane's outcome; stop
+      # burning runner minutes on docs/book/plan pushes.
+      - "**.md"
+      - "docs/**"
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   # Manual re-run for first-run debugging without pushing.
   workflow_dispatch:
 
