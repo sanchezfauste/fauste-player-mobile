@@ -310,23 +310,45 @@ fn while_playing_the_session_saves_at_the_injected_interval() {
 /// well). Past that one save there must be silence until the final save
 /// on Drop, which is unconditional (the desktop's shutdown save,
 /// `fp-app/src/services.rs:635-639`).
+///
+/// The boot save's LANDING TIME is machine-load-dependent: the engine's
+/// first ticks can be delayed past any fixed multiple of the debounce on
+/// a loaded CI runner (observed on GitHub: the save landed inside what
+/// this test used to treat as its fixed silence window, and the
+/// Some-vs-None mismatch failed the assertion). So WAIT for that first
+/// save instead of assuming when it lands, then assert the silence after
+/// it. If a future engine change stops the boot save from landing at
+/// all, the wait's deadline fails with a message that says exactly that
+/// — a legible contract change, not a mystery flake.
 #[test]
 fn a_settled_core_writes_nothing_until_the_final_save() {
     let dirs = TempDirs::new("idle");
     let debounce = Duration::from_millis(60);
     let core = PlayerCore::with_save_timing(dirs.data.clone(), dirs.cache.clone(), debounce)
         .expect("construction with the injected save timing");
-    // Whatever boot changed has been saved by now (several debounces past
-    // any quiet save).
-    std::thread::sleep(debounce * 8);
     let session = store_paths(&dirs.data).session_file();
-    let before = mtime(&session);
+    // Whatever boot changed is saved exactly once — wait for that write
+    // to LAND (bounded well past any CI-load delay) instead of sleeping
+    // a fixed multiple of the debounce and hoping the runner was quick.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let before = loop {
+        match mtime(&session) {
+            Some(at) => break Some(at),
+            None => {
+                assert!(
+                    Instant::now() < deadline,
+                    "the one legitimate boot save never landed within 10 s"
+                );
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+    };
     // The silence: several more debounces, no writes at all.
     std::thread::sleep(debounce * 8);
     assert_eq!(
         mtime(&session),
         before,
-        "a settled core must not write the store again"
+        "a settled core must not write the store again after its one boot save"
     );
     drop(core);
     let after = mtime(&session).expect("the final save flushed at Drop");
