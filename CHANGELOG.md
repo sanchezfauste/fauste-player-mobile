@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.1.1](https://github.com/sanchezfauste/fauste-player-mobile/compare/v0.1.0...v0.1.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **backends-mobile:** bounded waits and a write pair in the playing-interval test ([3d7c924](https://github.com/sanchezfauste/fauste-player-mobile/commit/3d7c924c9c187d962ddcbefc03f1ddaf91f3d964))
+* **backends-mobile:** wait for the boot save instead of racing it in the settled-core test ([781444e](https://github.com/sanchezfauste/fauste-player-mobile/commit/781444e726082e0d859e19441b78cfa3f2357937))
+* **ci:** checkout the desktop repo inside the workspace and symlink the sibling path ([c39f4c6](https://github.com/sanchezfauste/fauste-player-mobile/commit/c39f4c61af2c41e20ab921be16b8263b1c7cadf6))
+* **ci:** full-path sdkmanager pinned avd home and native build deps ([54d8e79](https://github.com/sanchezfauste/fauste-player-mobile/commit/54d8e791a1c66eb1725beac80a6f3d9046cec57d))
+* **ci:** host build deps in the android lane kvm chmod and ci-sized test budgets ([1a95337](https://github.com/sanchezfauste/fauste-player-mobile/commit/1a953378cf17c6f5ecb9919ba84efc0ba9cfa1c3))
+* **ci:** retry sdkmanager package installs against cdn download flakes ([889b168](https://github.com/sanchezfauste/fauste-player-mobile/commit/889b16820becf2b901df788dafffeaa056fa6553))
+
+
+### Documentation
+
+* **mobile:** align the user guide truths with the review findings ([e147a50](https://github.com/sanchezfauste/fauste-player-mobile/commit/e147a5012e0cd85fbfde3e3c22bf293e16cfc003))
+* **mobile:** changelog entry for the playing-interval test fix ([2e299ca](https://github.com/sanchezfauste/fauste-player-mobile/commit/2e299cabea44fd5f19d8041f6b3de0e4343ace7f))
+* **mobile:** changelog entry for the release automation ([49ff8c4](https://github.com/sanchezfauste/fauste-player-mobile/commit/49ff8c478429b1a1d99f84a3ffcf4e3e07def068))
+* **mobile:** changelog entry for the settled-core test fix ([1842fd5](https://github.com/sanchezfauste/fauste-player-mobile/commit/1842fd59a2c82161608f064c967748c9aea62eb7))
+* **mobile:** correct the technical set and changelog against the review ([2b84e77](https://github.com/sanchezfauste/fauste-player-mobile/commit/2b84e77cadaf18901185eb79aa303e2e937b61c3))
+* **mobile:** technical documentation and project root files at desktop parity ([ac11e2f](https://github.com/sanchezfauste/fauste-player-mobile/commit/ac11e2f52d216de5ac0d52d005ebb81bed65e3e9))
+* **mobile:** user guide book with emulator screenshots ([cf2db63](https://github.com/sanchezfauste/fauste-player-mobile/commit/cf2db63df3c05b5ea299112a5da210f3ec38abc3))
+
+
+### Build System
+
+* **mobile:** release-please automation with version.txt as the version source ([1c11b96](https://github.com/sanchezfauste/fauste-player-mobile/commit/1c11b96bd3474cdbd8ee5185c8674ce39ff6a18d))
+
 ## [Unreleased]
 
 ### Documentation
