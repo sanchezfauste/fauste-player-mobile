@@ -131,6 +131,42 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
+// APP VERSION — RELEASE-PLEASE IS THE ONLY WRITER (release-please-config.json;
+// docs/technical/release-process.md). version.txt at the repository root is
+// the single source of the app version: release-please has no Gradle/Kotlin
+// updater (its file formats are json/toml/yaml/xml/pom/generic), so the
+// simple strategy's native version-file mechanism bumps that plain text
+// file in every release pull request, and this build reads it here, at
+// configuration time. versionCode is DERIVED — major*10000 + minor*100 +
+// patch, 0.1.0 = 100 — so it rises with the version without a second
+// hand-edited number; no build ever reached a store with a different code
+// (the pre-automation literal was never uploaded anywhere).
+val appVersion: Pair<Int, String> =
+    run {
+        val versionFile = rootProject.layout.projectDirectory.file("version.txt")
+        if (!versionFile.asFile.isFile) {
+            throw GradleException(
+                "version.txt is missing at the repository root: it holds the app " +
+                    "version and is written by release-please " +
+                    "(see docs/technical/release-process.md).",
+            )
+        }
+        // fileContents keeps the read configuration-cache friendly (Gradle
+        // tracks the file as a build input).
+        val text = providers.fileContents(versionFile).asText.get().trim()
+        val match = Regex("""(\d+)\.(\d+)\.(\d+)""").matchEntire(text)
+        // A malformed version.txt must fail here, naming the file — not
+        // later as a confusing packaging error.
+        if (match == null) {
+            throw GradleException(
+                "version.txt must contain the app version as major.minor.patch " +
+                    "(release-please writes it); found \"$text\".",
+            )
+        }
+        val (major, minor, patch) = match.destructured
+        major.toInt() * 10_000 + minor.toInt() * 100 + patch.toInt() to text
+    }
+
 /** The four maintainer-supplied signing properties (see docs/release/signing.md). */
 private data class SigningProps(
     val storeFile: String,
@@ -147,8 +183,8 @@ android {
         applicationId = "org.fauste.player"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = appVersion.first
+        versionName = appVersion.second
     }
 
     // RELEASE SIGNING (Phase 5, Ruling 6 — documented, not invented): the

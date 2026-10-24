@@ -4,9 +4,43 @@ The release artifact is an Android app, so the release process is
 Gradle-shaped: R8, signing, an AAB — plus the project's own
 verification battery. The desktop's page
 ([release process](https://github.com/sanchezfauste/fauste-player/blob/master/docs/technical/release-process.md))
-governs everything shared (Conventional Commits, SemVer); there is no
-release-please on this repository — the maintainer tags and ships, and
-`CHANGELOG.md` is maintained from the phase history.
+governs everything shared (Conventional Commits, SemVer) — including
+the release-please automation, ported here with one adaptation: the
+version lives in `version.txt`, not in Cargo metadata, because
+release-please has no Gradle updater and `version-file` is its `simple`
+strategy's native mechanism for a plain version file.
+
+## Release automation (release-please)
+
+Every push to `main` keeps a release pull request up to date
+(`chore: release X.Y.Z`, from
+[`release-please-config.json`](../../release-please-config.json)): the
+CHANGELOG section regenerated from the Conventional Commits since the
+last tag, and the bump in `version.txt`,
+`.release-please-manifest.json`, `Cargo.toml` (the workspace version)
+and `Cargo.lock` (the `fp-backends-mobile` entry). Merging that PR
+tags `vX.Y.Z` and creates the GitHub release; because releases created
+with `GITHUB_TOKEN` do not trigger other workflows, the **same run**
+builds the tag's unsigned AAB and attaches it with its SHA-256, plus
+the honest unsigned note
+([release-build.yml](../../.github/workflows/release-build.yml)).
+
+The app version's single source is `version.txt`;
+`composeApp/build.gradle.kts` reads it at configuration time and
+derives `versionCode = major×10000 + minor×100 + patch` (`0.1.0` =
+`100`), so the code rises with the version without a second
+hand-edited number. The GitHub release is notes plus provenance, not
+distribution: the attached bundle is unsigned and cannot be installed
+— the installable, signed bundle is the Play Console upload described
+below. The release history starts at the hand-tagged `v0.1.0` (the
+phase 0–5 state); release-please does not look earlier than that tag.
+
+Repository setup (one-time, already in place): "Allow GitHub Actions to
+create and approve pull requests" (Settings → Actions → General), and
+optionally the `RELEASE_PLEASE_TOKEN` secret (a fine-grained PAT with
+contents and pull-requests write) so the release PR runs the CI lanes
+— pull requests opened with the default `GITHUB_TOKEN` do not run
+workflows.
 
 ## R8 and minification
 
@@ -54,7 +88,9 @@ excludes `*.jks`/`*.keystore` as a structural guarantee.
 `composeApp-release.aab` — signed when the four properties are present
 — ready for Play Console's internal testing track. Enabling Play App
 Signing is the maintainer's workflow decision; either way the key
-material stays off the repository.
+material stays off the repository. Each GitHub release also carries the
+CI-built unsigned twin of this bundle, for provenance (see
+[Release automation](#release-automation-release-please)).
 
 ## Measurements
 

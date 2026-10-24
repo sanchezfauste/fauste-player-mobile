@@ -1,0 +1,50 @@
+name: release-please
+
+# On every push to main, release-please keeps a release PR up to date
+# (version bump in version.txt / .release-please-manifest.json / the Rust
+# workspace version, and the CHANGELOG, derived from Conventional
+# Commits). Merging that PR tags vX.Y.Z and creates the GitHub release;
+# the unsigned AAB is then built and attached in the same run, because
+# releases created with GITHUB_TOKEN do not trigger other workflows.
+#
+# Unlike the three CI lanes, this workflow has NO paths-ignore: the
+# release PR must also absorb documentation commits (docs entries are
+# visible changelog sections), so a markdown-only push still runs.
+#
+# Repository setup: enable "Allow GitHub Actions to create and approve
+# pull requests" (Settings → Actions → General; already enabled on this
+# repository). Optionally add a secret RELEASE_PLEASE_TOKEN (a
+# fine-grained PAT or GitHub App token with contents and pull-requests
+# write access): PRs opened with it run the CI lanes, which PRs opened
+# with the default GITHUB_TOKEN do not.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  bundle:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/release-build.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+    permissions:
+      contents: write

@@ -155,8 +155,12 @@ A change is not done until everything that describes it says the same:
   commands or layout change;
 - UI strings in every locale file.
 
-`CHANGELOG.md` is maintained by hand here (no release-please): a phase
-merged to `main` gets its user-facing and engineering entries.
+`CHANGELOG.md` is maintained by release-please: every push to `main`
+keeps a `chore: release X.Y.Z` pull request up to date, and merging it
+writes the changelog section, bumps `version.txt` (the app version's
+single source), the release-please manifest and the Rust workspace
+version, tags `vX.Y.Z` and attaches the tag's unsigned AAB to the
+GitHub release — see `docs/technical/release-process.md`.
 
 ## Commits
 

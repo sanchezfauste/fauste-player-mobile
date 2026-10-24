@@ -1,0 +1,148 @@
+name: release-build
+
+# Builds the unsigned release AAB of `tag` and attaches it — with its
+# SHA-256 — to the tag's GitHub release. Called by release-please.yml in
+# the same run that creates the release (releases created with
+# GITHUB_TOKEN do not trigger other workflows, so the artifact cannot be
+# built by a separate lane); also dispatchable by hand to rebuild an
+# existing tag's asset.
+#
+# Leaner than the desktop's release-build.yml by design: no
+# pull-request dry run, because the Android lane already runs
+# `bundleRelease` on every push — this workflow's only unique steps are
+# the upload and the release note. The bundle is UNSIGNED (CI never sees
+# signing properties; see docs/release/signing.md): it cannot be
+# installed and exists for provenance — the SHA-256 pins the exact bits
+# the tag builds. The installable, signed bundle reaches devices through
+# the Play Console (the maintainer's local step).
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: The release tag to build and attach (for example v0.1.1)
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to rebuild (for example v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  bundle:
+    name: unsigned AAB
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      # Path deps resolve ../fauste-player relative to this repo's
+      # checkout; actions/checkout@v4 refuses paths outside
+      # $GITHUB_WORKSPACE, so the desktop repo is checked out inside the
+      # workspace and symlinked into the sibling slot the manifests
+      # expect (same pattern as the Android lane; ref rides the desktop
+      # tip).
+      - name: Check out the desktop repo (path dependencies)
+        uses: actions/checkout@v4
+        with:
+          repository: sanchezfauste/fauste-player
+          ref: master
+          path: fauste-player
+      - name: Expose the desktop checkout at the sibling path the manifests expect
+        run: ln -s "$GITHUB_WORKSPACE/fauste-player" "$(dirname "$GITHUB_WORKSPACE")/fauste-player"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # The Gradle build links the Rust cdylib for the host too; the
+      # alsa/dbus headers are the host-graph dependencies (see the
+      # Android lane's round-3 evidence).
+      - name: Native build dependencies
+        run: >
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          pkg-config libasound2-dev libdbus-1-dev
+
+      # ubuntu-latest has the Android SDK at $ANDROID_HOME but does NOT put
+      # cmdline-tools on PATH; call sdkmanager by its full path. The image
+      # no longer ships this NDK — the step installs the pinned one.
+      - name: Android SDK components
+        run: |
+          SDKMGR="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMGR"
+          yes | "$SDKMGR" --licenses > /dev/null
+          "$SDKMGR" \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;27.0.12077973"
+
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.98.1
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
+
+      - name: Android Rust targets
+        run: rustup target add aarch64-linux-android x86_64-linux-android
+
+      # No RELEASE_* signing properties are set anywhere in CI: the bundle
+      # is the honest unsigned release artifact by design.
+      - name: Build the unsigned AAB
+        run: ./gradlew buildRust :composeApp:bundleRelease
+
+      - name: Stage the bundle with its checksum
+        id: aab
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          version="${TAG#v}"
+          cp composeApp/build/outputs/bundle/release/composeApp-release.aab \
+            "fauste-player-${version}-unsigned.aab"
+          sha256sum "fauste-player-${version}-unsigned.aab" \
+            > "fauste-player-${version}-unsigned.aab.sha256"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ steps.aab.outputs.version }}
+        run: |
+          gh release upload "$TAG" \
+            "fauste-player-${VERSION}-unsigned.aab" \
+            "fauste-player-${VERSION}-unsigned.aab.sha256" \
+            --clobber
+
+      - name: Note in the release that the bundle is unsigned
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          SIGNING: https://github.com/${{ github.repository }}/blob/${{ inputs.tag }}/docs/release/signing.md
+        run: |
+          # Append-once: a re-dispatched rebuild must not duplicate the note.
+          marker="<!-- unsigned-bundle -->"
+          body="$(gh release view "${TAG}" --json body --jq .body --repo "${GITHUB_REPOSITORY}")"
+          case "${body}" in *"${marker}"*) exit 0 ;; esac
+          {
+            printf '%s\n\n%s\n' "${body}" "${marker}"
+            printf '\n### Unsigned bundle\n\n'
+            printf 'The attached AAB is the CI build of this tag: it carries no signature and cannot be installed. It is published for provenance — the SHA-256 pins the exact bits the tag builds. The installable, signed bundle reaches devices through the Play Console; see the signing setup: [signing.md](%s)\n' "${SIGNING}"
+          } > notes.md
+          gh release edit "${TAG}" --notes-file notes.md --repo "${GITHUB_REPOSITORY}"
+
+      - uses: gradle/actions/wrapper-validation@v3

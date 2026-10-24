@@ -26,7 +26,8 @@ repeats the essentials for agents that do not follow links.
   on-device surface changes — `./scripts/emulator-test.sh`, and the app
   smoke when the service startup or the FFI surface changed.
 - Conventional Commits (`type(scope)`: scopes `mobile`, `backends-mobile`,
-  `ci`, `docs`). `CHANGELOG.md` is maintained by hand per merged phase.
+  `ci`, `docs`). `CHANGELOG.md` is maintained by release-please
+  (release pull requests derived from the commits).
 - No secrets or keystores committed; signing stays property-driven and
   green unsigned.
 - Keep `docs/user` and `docs/technical` in sync with behaviour; the
