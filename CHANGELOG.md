@@ -13,6 +13,7 @@
 
 ### Bug Fixes
 
+* **backends-mobile:** wait for the boot save instead of racing it in the settled-core test ([781444e](https://github.com/sanchezfauste/fauste-player-mobile/commit/781444e726082e0d859e19441b78cfa3f2357937))
 * **ci:** retry sdkmanager package installs against cdn download flakes ([889b168](https://github.com/sanchezfauste/fauste-player-mobile/commit/889b16820becf2b901df788dafffeaa056fa6553))
 * **ci:** host build deps in the android lane kvm chmod and ci-sized test budgets ([1a95337](https://github.com/sanchezfauste/fauste-player-mobile/commit/1a953378cf17c6f5ecb9919ba84efc0ba9cfa1c3))
 * **ci:** full-path sdkmanager pinned avd home and native build deps ([54d8e79](https://github.com/sanchezfauste/fauste-player-mobile/commit/54d8e791a1c66eb1725beac80a6f3d9046cec57d))
