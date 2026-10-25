@@ -677,7 +677,7 @@ dependencies = [
 
 [[package]]
 name = "fp-backends-mobile"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "aaudio-sys",
  "fp-analysis",
