@@ -21,19 +21,24 @@ last tag, and the bump in `version.txt`,
 and `Cargo.lock` (the `fp-backends-mobile` entry). Merging that PR
 tags `vX.Y.Z` and creates the GitHub release; because releases created
 with `GITHUB_TOKEN` do not trigger other workflows, the **same run**
-builds the tag's unsigned AAB and attaches it with its SHA-256, plus
-the honest unsigned note
-([release-build.yml](../../.github/workflows/release-build.yml)).
+builds the tag's bundle and attaches it with its SHA-256 — signed, plus
+a signed universal APK, when the signing secrets are configured, or
+the honest unsigned provenance bundle with its note otherwise
+([release-build.yml](../../.github/workflows/release-build.yml),
+[signing.md](../release/signing.md)).
 
 The app version's single source is `version.txt`;
 `composeApp/build.gradle.kts` reads it at configuration time and
 derives `versionCode = major×10000 + minor×100 + patch` (`0.1.0` =
 `100`), so the code rises with the version without a second
-hand-edited number. The GitHub release is notes plus provenance, not
-distribution: the attached bundle is unsigned and cannot be installed
-— the installable, signed bundle is the Play Console upload described
-below. The release history starts at the hand-tagged `v0.1.0` (the
-phase 0–5 state); release-please does not look earlier than that tag.
+hand-edited number. The release's artifacts follow the signing secrets
+([signing.md](../release/signing.md)): configured, the release carries
+the signed bundle plus a signed, directly-installable universal APK
+whose v2 signature is verified in-lane; unconfigured, the unsigned
+bundle is provenance only and the note says so — Play Console stays
+the distribution channel of record either way. The release history
+starts at the hand-tagged `v0.1.0` (the phase 0–5 state);
+release-please does not look earlier than that tag.
 
 Repository setup (one-time, already in place): "Allow GitHub Actions to
 create and approve pull requests" (Settings → Actions → General), and

@@ -119,48 +119,54 @@ Uploading that AAB and letting Play manage signing (enabling *Play App
 Signing*) is the maintainer's workflow decision; either way, the key material
 stays off the repository.
 
-## How CI would consume the secrets
+## How CI consumes the secrets
 
-Today the CI lanes deliberately run **unsigned**: the Android lane's release
-step proves R8/packaging, not identity (an unsigned artifact is a fully
-meaningful CI output — it either builds or it doesn't). No signing secrets are
-stored on GitHub, so a fork or a leaked runner log exposes nothing.
+The three test lanes (CI, Android, Emulator) deliberately stay **unsigned**:
+they prove buildability and behaviour, not identity — an unsigned artifact is
+a fully meaningful CI output, and a fork or a leaked runner log exposes
+nothing. Only the release lane consumes signing secrets.
 
-When the maintainer wants CI-produced installable artifacts, the standard
-shape is:
+`release-build.yml` reads the four repository secrets and follows the build's
+own all-four-or-nothing contract:
 
-1. Store the four values as **GitHub Actions encrypted secrets**
-   (`Settings → Secrets and variables → Actions`, e.g.
-   `RELEASE_STOREFILE_B64` holding a base64 of the keystore, plus the three
-   passwords/alias).
-2. In the workflow, materialize them into `GRADLE_USER_HOME` before the
-   Gradle step:
+| Secret | Maps to |
+|---|---|
+| `RELEASE_STOREFILE_B64` | base64 of the keystore — decoded onto the ephemeral runner and passed to the build as `RELEASE_STORE_FILE` |
+| `RELEASE_KEYSTORE_PASSWORD` | `RELEASE_STORE_PASSWORD` |
+| `RELEASE_KEY_ALIAS` | `RELEASE_KEY_ALIAS` |
+| `RELEASE_KEY_PASSWORD` | `RELEASE_KEY_PASSWORD` |
 
-   ```yaml
-   - name: Materialize the signing config
-     env:
-     #  RELEASE_STOREFILE_B64 / RELEASE_KEYSTORE_PASSWORD / RELEASE_KEY_ALIAS
-     #  / RELEASE_KEY_PASSWORD — repository secrets, never echoed
-     #  (set the `env:` keys on the step; elided here for brevity)
-     # shell: bash
-     # run: |
-     #   printf '%s' "$RELEASE_STOREFILE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
-     #   {
-     #     echo "RELEASE_STORE_FILE=$RUNNER_TEMP/release.jks"
-     #     echo "RELEASE_STORE_PASSWORD=$RELEASE_KEYSTORE_PASSWORD"
-     #     echo "RELEASE_KEY_ALIAS=$RELEASE_KEY_ALIAS"
-     #     echo "RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD"
-     #   } >> "$HOME/.gradle/gradle.properties"
-   ```
+With all four configured, each GitHub release carries the **signed** bundle
+(`fauste-player-<version>-release.aab`) plus a **signed universal APK**
+(`fauste-player-<version>-universal.apk`, extracted from that bundle with the
+SHA-256-pinned bundletool), each with its checksum, and the APK's v2
+signature is verified in-lane (`apksigner verify` — the "Before shipping"
+check, automated). With any missing, the lane degrades to the unsigned
+provenance bundle and the release note saying so — CI stays green without
+secrets.
 
-   (Commented here so no half-configured workflow ships in this repository;
-   uncomment and fill the `env:` when adopting.)
-3. Keep the secrets masked: the passwords land in
-   `~/.gradle/gradle.properties` on the ephemeral runner, which Gradle reads
-   automatically; nothing is printed. The keystore file dies with the runner.
-4. If artifacts are published (e.g. `actions/upload-artifact`), note that
-   they are then signed with the *real* key — restrict who can trigger that
-   workflow accordingly.
+Adoption (once):
+
+```bash
+# 1. Create the real keystore — the "Creating a keystore" section above
+#    (same store/key password, per the PKCS12 note).
+# 2. Upload the four secrets; the values are read hidden, never on a
+#    command line:
+base64 -w0 /path/to/fauste-release.jks > /tmp/opencode/keystore.b64
+gh secret set RELEASE_STOREFILE_B64 < /tmp/opencode/keystore.b64
+gh secret set RELEASE_KEYSTORE_PASSWORD   # paste when prompted
+gh secret set RELEASE_KEY_ALIAS
+gh secret set RELEASE_KEY_PASSWORD
+rm /tmp/opencode/keystore.b64
+```
+
+Security posture: only write-access paths can reach the signed build — the
+release pull request merge on `main`, or a manual `workflow_dispatch`
+(which requires write access to run). The keystore and the properties live
+in the ephemeral runner's temp and home and die with it; nothing is
+printed. A `workflow_dispatch` rebuild of an older release signs that
+tag's tree but leaves any earlier unsigned assets attached — delete them
+by hand (`gh release delete-asset`) if you want the release page clean.
 
 ## Verification trail
 

@@ -28,7 +28,7 @@ protocol), reachable on the device alone.
 | Crash reporting (Rust panic hook + Kotlin uncaught handler) | ✅ shipped | mirrors the desktop's report shape; see below for locations |
 | i18n — English (en-US) + Spanish (es-ES), Fluent | ✅ shipped | follows the device locale |
 | Settings: backend picker (probe-honest), remote status, volume | ✅ shipped | loopback remote only |
-| Release build: R8-minified APK/AAB, signing documented | ✅ shipped | see [docs/release/signing.md](docs/release/signing.md) |
+| Release build: R8-minified APK/AAB, signing documented | ✅ shipped | releases carry signed AAB + universal APK when CI secrets are configured — [docs/release/signing.md](docs/release/signing.md) |
 | Playlists screen (tabs, drag-reorder) | 🗺️ roadmap | needs its FFI + services surface planned |
 | Cartwall screen | 🗺️ roadmap | same |
 | Waveform / meter / cues / intro-outro | 🗺️ roadmap | needs waveform + analysis FFI (cover, peaks) |

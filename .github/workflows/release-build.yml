@@ -10,11 +10,17 @@ name: release-build
 # Leaner than the desktop's release-build.yml by design: no
 # pull-request dry run, because the Android lane already runs
 # `bundleRelease` on every push — this workflow's only unique steps are
-# the upload and the release note. The bundle is UNSIGNED (CI never sees
-# signing properties; see docs/release/signing.md): it cannot be
-# installed and exists for provenance — the SHA-256 pins the exact bits
-# the tag builds. The installable, signed bundle reaches devices through
-# the Play Console (the maintainer's local step).
+# the signing, the upload and the release note.
+#
+# Signing is CONDITIONAL on the four repository secrets (names and
+# adoption steps in docs/release/signing.md): with all four present the
+# release carries the SIGNED bundle plus a signed universal APK that
+# installs directly; with any missing it degrades to the honest unsigned
+# shape — a provenance bundle and the note saying so. CI stays green
+# without secrets, so forks and secret-less contributors expose nothing.
+# Only write-access paths can reach the signed build: the release pull
+# request merge on main, or a manual workflow_dispatch (which requires
+# write access to run).
 
 on:
   workflow_call:
@@ -23,6 +29,18 @@ on:
         description: The release tag to build and attach (for example v0.1.1)
         required: true
         type: string
+    secrets:
+      # All optional — the honest unsigned degradation is the design when
+      # any is missing. Values arrive via `secrets: inherit` from
+      # release-please.yml (or repository secrets on a direct dispatch).
+      RELEASE_STOREFILE_B64:
+        required: false
+      RELEASE_KEYSTORE_PASSWORD:
+        required: false
+      RELEASE_KEY_ALIAS:
+        required: false
+      RELEASE_KEY_PASSWORD:
+        required: false
   workflow_dispatch:
     inputs:
       tag:
@@ -38,7 +56,7 @@ env:
 
 jobs:
   bundle:
-    name: unsigned AAB
+    name: release artifacts
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -100,49 +118,160 @@ jobs:
       - name: Android Rust targets
         run: rustup target add aarch64-linux-android x86_64-linux-android
 
-      # No RELEASE_* signing properties are set anywhere in CI: the bundle
-      # is the honest unsigned release artifact by design.
-      - name: Build the unsigned AAB
+      # All four or nothing — the build's own contract (build.gradle.kts):
+      # partial secrets must not produce a half-signed build. The keystore
+      # is decoded into the ephemeral runner, and the properties go to
+      # ~/.gradle/gradle.properties (outside the checkout, read
+      # automatically by Gradle, never printed).
+      - name: Materialize the signing config
+        id: signing
+        env:
+          RELEASE_STOREFILE_B64: ${{ secrets.RELEASE_STOREFILE_B64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$RELEASE_STOREFILE_B64" ] && [ -n "$RELEASE_KEYSTORE_PASSWORD" ] \
+             && [ -n "$RELEASE_KEY_ALIAS" ] && [ -n "$RELEASE_KEY_PASSWORD" ]; then
+            printf '%s' "$RELEASE_STOREFILE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            {
+              echo "RELEASE_STORE_FILE=$RUNNER_TEMP/release.jks"
+              echo "RELEASE_STORE_PASSWORD=$RELEASE_KEYSTORE_PASSWORD"
+              echo "RELEASE_KEY_ALIAS=$RELEASE_KEY_ALIAS"
+              echo "RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD"
+            } >> "$HOME/.gradle/gradle.properties"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Pinned bundletool, verified by SHA-256 (the desktop's
+      # flatpak-generator pattern). The universal APK is extracted from
+      # the SIGNED bundle, so the APK is the exact bits of the AAB.
+      - name: Download bundletool
+        if: steps.signing.outputs.signed == 'true'
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/bundletool.jar" \
+            "https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar"
+          echo "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29  $RUNNER_TEMP/bundletool.jar" \
+            | sha256sum -c -
+
+      # Signed when the four secrets exist (the materialized properties
+      # above), honest unsigned otherwise — the green-unsigned contract.
+      - name: Build the release AAB
         run: ./gradlew buildRust :composeApp:bundleRelease
 
-      - name: Stage the bundle with its checksum
-        id: aab
+      - name: Build the universal APK from the signed bundle
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          # bundletool takes passwords only as pass:/file: — files in
+          # $RUNNER_TEMP keep them out of argv and logs.
+          printf '%s' "$RELEASE_KEYSTORE_PASSWORD" > "$RUNNER_TEMP/bt-store-pass"
+          printf '%s' "$RELEASE_KEY_PASSWORD" > "$RUNNER_TEMP/bt-key-pass"
+          java -jar "$RUNNER_TEMP/bundletool.jar" build-apks \
+            --bundle=composeApp/build/outputs/bundle/release/composeApp-release.aab \
+            --output="$RUNNER_TEMP/universal.apks" \
+            --mode=universal \
+            --ks="$RUNNER_TEMP/release.jks" \
+            --ks-key-alias="$RELEASE_KEY_ALIAS" \
+            --ks-pass=file:"$RUNNER_TEMP/bt-store-pass" \
+            --key-pass=file:"$RUNNER_TEMP/bt-key-pass"
+          unzip -o -j "$RUNNER_TEMP/universal.apks" universal.apk \
+            -d "$RUNNER_TEMP/universal-out"
+
+      - name: Stage the artifacts with their checksums
+        id: artifacts
         env:
           TAG: ${{ inputs.tag }}
+          SIGNED: ${{ steps.signing.outputs.signed }}
         run: |
           version="${TAG#v}"
-          cp composeApp/build/outputs/bundle/release/composeApp-release.aab \
-            "fauste-player-${version}-unsigned.aab"
-          sha256sum "fauste-player-${version}-unsigned.aab" \
-            > "fauste-player-${version}-unsigned.aab.sha256"
+          # Names tell the truth: what each file IS.
+          if [ "$SIGNED" = true ]; then
+            cp composeApp/build/outputs/bundle/release/composeApp-release.aab \
+              "fauste-player-${version}-release.aab"
+            mv "$RUNNER_TEMP/universal-out/universal.apk" \
+              "fauste-player-${version}-universal.apk"
+            for f in "fauste-player-${version}-release.aab" \
+                     "fauste-player-${version}-universal.apk"; do
+              sha256sum "$f" > "$f.sha256"
+            done
+            {
+              echo "files<<EOF"
+              echo "fauste-player-${version}-release.aab"
+              echo "fauste-player-${version}-release.aab.sha256"
+              echo "fauste-player-${version}-universal.apk"
+              echo "fauste-player-${version}-universal.apk.sha256"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            cp composeApp/build/outputs/bundle/release/composeApp-release.aab \
+              "fauste-player-${version}-unsigned.aab"
+            sha256sum "fauste-player-${version}-unsigned.aab" \
+              > "fauste-player-${version}-unsigned.aab.sha256"
+            {
+              echo "files<<EOF"
+              echo "fauste-player-${version}-unsigned.aab"
+              echo "fauste-player-${version}-unsigned.aab.sha256"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      # The "Before shipping" check from docs/technical/release-process.md,
+      # automated: the attached APK must verify with the v2 scheme (the
+      # Play-mandatory one at minSdk 26).
+      - name: Verify the universal APK's signature
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          VERSION: ${{ steps.artifacts.outputs.version }}
+        run: |
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify -v \
+            "fauste-player-${VERSION}-universal.apk" > apksigner.log
+          cat apksigner.log
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" apksigner.log
 
       - name: Upload to the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
-          VERSION: ${{ steps.aab.outputs.version }}
+          FILES: ${{ steps.artifacts.outputs.files }}
         run: |
-          gh release upload "$TAG" \
-            "fauste-player-${VERSION}-unsigned.aab" \
-            "fauste-player-${VERSION}-unsigned.aab.sha256" \
-            --clobber
+          # No mapfile: keep the iteration POSIX-friendly over the list.
+          while IFS= read -r f; do
+            [ -n "$f" ] && gh release upload "$TAG" "$f" --clobber
+          done <<< "$FILES"
 
-      - name: Note in the release that the bundle is unsigned
+      - name: Write the release's artifact note
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
+          SIGNED: ${{ steps.signing.outputs.signed }}
           SIGNING: https://github.com/${{ github.repository }}/blob/${{ inputs.tag }}/docs/release/signing.md
         run: |
-          # Append-once: a re-dispatched rebuild must not duplicate the note.
-          marker="<!-- unsigned-bundle -->"
+          # Append-once: a re-dispatched rebuild must not duplicate a note.
           body="$(gh release view "${TAG}" --json body --jq .body --repo "${GITHUB_REPOSITORY}")"
-          case "${body}" in *"${marker}"*) exit 0 ;; esac
-          {
-            printf '%s\n\n%s\n' "${body}" "${marker}"
-            printf '\n### Unsigned bundle\n\n'
-            printf 'The attached AAB is the CI build of this tag: it carries no signature and cannot be installed. It is published for provenance — the SHA-256 pins the exact bits the tag builds. The installable, signed bundle reaches devices through the Play Console; see the signing setup: [signing.md](%s)\n' "${SIGNING}"
-          } > notes.md
+          if [ "$SIGNED" = true ]; then
+            marker="<!-- release-artifacts -->"
+            case "${body}" in *"${marker}"*) exit 0 ;; esac
+            {
+              printf '%s\n\n%s\n' "${body}" "${marker}"
+              printf '\n### Release artifacts\n\n'
+              printf 'The universal APK installs directly on a device (Android 8.0+; arm64-v8a / x86_64). The AAB is the Play Store upload format. SHA-256 checksums sit next to each file.\n'
+            } > notes.md
+          else
+            marker="<!-- unsigned-bundle -->"
+            case "${body}" in *"${marker}"*) exit 0 ;; esac
+            {
+              printf '%s\n\n%s\n' "${body}" "${marker}"
+              printf '\n### Unsigned bundle\n\n'
+              printf 'The attached AAB is the CI build of this tag: it carries no signature and cannot be installed. It is published for provenance — the SHA-256 pins the exact bits the tag builds. The installable, signed bundle reaches devices through the Play Console; see the signing setup: [signing.md](%s)\n' "${SIGNING}"
+            } > notes.md
+          fi
           gh release edit "${TAG}" --notes-file notes.md --repo "${GITHUB_REPOSITORY}"
 
       - uses: gradle/actions/wrapper-validation@v3
