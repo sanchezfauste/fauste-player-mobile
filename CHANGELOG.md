@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.2](https://github.com/sanchezfauste/fauste-player-mobile/compare/v0.1.1...v0.1.2) (2026-10-25)
+
+
+### Documentation
+
+* **mobile:** drop the consumed unreleased changelog section ([216396e](https://github.com/sanchezfauste/fauste-player-mobile/commit/216396e1e24ffb70af26ac91d3fd59fd23501533))
+
+
+### Build System
+
+* **mobile:** signed release artifacts from CI secrets ([b5d099d](https://github.com/sanchezfauste/fauste-player-mobile/commit/b5d099dd4380ed40158944d6600bbfa8c6a38054))
+
 ## [0.1.1](https://github.com/sanchezfauste/fauste-player-mobile/compare/v0.1.0...v0.1.1) (2026-10-24)
 
 
